@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: webnida-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/docs
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: DECOLECTA_TOKEN
+        sync: false
+      - key: DECOLECTA_BASE_URL
+        sync: false
+      - key: MAX_FILE_SIZE
+        value: "5242880"
+      - key: UPLOAD_PATH
+        value: /var/data/uploads
