@@ -25,7 +25,13 @@
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
-        }
+        },
+        "exclude-from-classmap": [
+            "vendor/laravel/pint/app/Providers/AppServiceProvider.php",
+            "vendor/league/flysystem/src/Local/FallbackMimeTypeDetector.php",
+            "vendor/league/flysystem/src/Local/LocalFilesystemAdapter.php",
+            "vendor/league/flysystem/src/Local/LocalFilesystemAdapterTest.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
