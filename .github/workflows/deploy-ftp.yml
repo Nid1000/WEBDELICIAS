@@ -10,21 +10,34 @@ jobs:
   ftp-deploy:
     name: Upload files to hosting
     runs-on: ubuntu-latest
+    env:
+      FTP_SERVER: ftp.saborcentral.com
+      FTP_USERNAME: deploypanaderia@saborcentral.com
+      FTP_TARGET_DIR: /delicias.saborcentral.com/
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check FTP password secret
+        env:
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          if [ -z "$FTP_PASSWORD" ]; then
+            echo "::error title=Falta FTP_PASSWORD::Crea el secret FTP_PASSWORD en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
       - name: Deploy to cPanel via FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ftp.saborcentral.com
-          username: deploypanaderia@saborcentral.com
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ env.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           port: 21
           local-dir: ./
-          server-dir: /delicias.saborcentral.com/
+          server-dir: ${{ env.FTP_TARGET_DIR }}
           exclude: |
             **/.git*
             **/.git*/**
