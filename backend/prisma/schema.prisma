@@ -1,0 +1,222 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+// Enums basados en el esquema actual
+enum AdminRol {
+  admin
+  super_admin
+
+  @@map("rol")
+}
+
+enum PedidoEstado {
+  pendiente
+  confirmado
+  en_preparacion
+  listo
+  entregado
+  cancelado
+}
+
+enum TipoUsuarioLoginLog {
+  usuario
+  admin
+}
+
+model Categoria {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique
+  descripcion String?
+  imagen      String?
+  activo      Boolean  @default(true)
+  created_at  DateTime @default(now()) @map("created_at")
+  updated_at  DateTime @updatedAt @map("updated_at")
+
+  productos Producto[]
+
+  @@map("categorias")
+}
+
+model Producto {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  descripcion  String?
+  precio       Decimal  @db.Decimal(10, 2)
+  categoria_id Int?     @map("categoria_id")
+  imagen       String?
+  stock        Int      @default(0)
+  destacado    Boolean  @default(false)
+  activo       Boolean  @default(true)
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  categoria Categoria?      @relation(fields: [categoria_id], references: [id], onDelete: SetNull)
+  detalles  PedidoDetalle[]
+
+  @@map("productos")
+}
+
+model Usuario {
+  id         Int      @id @default(autoincrement())
+  nombre     String
+  apellido   String
+  email      String   @unique
+  password   String
+  telefono   String?  @db.VarChar(20)
+  direccion  String?  @db.Text
+  distrito    String?  @db.VarChar(120)
+  numero_casa String?  @map("numero_casa") @db.VarChar(20)
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
+
+  pedidos   Pedido[]
+  loginLogs LoginLog[]
+
+  @@map("usuarios")
+}
+
+model Administrador {
+  id         Int      @id @default(autoincrement())
+  nombre     String
+  email      String   @unique
+  password   String
+  rol        AdminRol @default(admin)
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
+
+  loginLogs LoginLog[]
+
+  @@map("administradores")
+}
+
+model Pedido {
+  id                Int          @id @default(autoincrement())
+  usuario_id        Int?         @map("usuario_id")
+  total             Decimal      @db.Decimal(10, 2)
+  estado            PedidoEstado @default(pendiente)
+  fecha_entrega     DateTime?    @map("fecha_entrega") @db.Date
+  direccion_entrega String?      @map("direccion_entrega") @db.Text
+  distrito_entrega     String?      @map("distrito_entrega") @db.VarChar(120)
+  numero_casa_entrega  String?      @map("numero_casa_entrega") @db.VarChar(20)
+  direccion_id         Int?         @map("direccion_id")
+  telefono_contacto String?      @map("telefono_contacto") @db.VarChar(20)
+  notas             String?      @db.Text
+  created_at        DateTime     @default(now()) @map("created_at")
+  updated_at        DateTime     @updatedAt @map("updated_at")
+
+  usuario      Usuario?        @relation(fields: [usuario_id], references: [id], onDelete: SetNull)
+  detalles     PedidoDetalle[]
+  comprobantes Comprobante[]
+
+  @@map("pedidos")
+}
+
+model PedidoDetalle {
+  id              Int     @id @default(autoincrement())
+  pedido_id       Int     @map("pedido_id")
+  producto_id     Int?    @map("producto_id")
+  cantidad        Int
+  precio_unitario Decimal @map("precio_unitario") @db.Decimal(10, 2)
+  subtotal        Decimal @db.Decimal(10, 2)
+
+  pedido   Pedido    @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+  producto Producto? @relation(fields: [producto_id], references: [id], onDelete: SetNull)
+
+  @@map("pedido_detalles")
+}
+
+model LoginLog {
+  id           Int                 @id @default(autoincrement())
+  usuario_id   Int?
+  admin_id     Int?
+  tipo_usuario TipoUsuarioLoginLog
+  ip_address   String?             @db.VarChar(45)
+  user_agent   String?             @db.Text
+  exitoso      Boolean             @default(true)
+  created_at   DateTime            @default(now())
+
+  usuario Usuario?       @relation(fields: [usuario_id], references: [id], onDelete: SetNull)
+  admin   Administrador? @relation(fields: [admin_id], references: [id], onDelete: SetNull)
+
+  @@map("login_logs")
+}
+
+model Comprobante {
+  id                Int    @id @default(autoincrement())
+  pedido_id         Int    @map("pedido_id")
+  tipo              String @db.VarChar(20)
+  serie             String @db.VarChar(10)
+  numero            Int
+  numero_formateado String @map("numero_formateado") @db.VarChar(30)
+
+  archivo_nombre String  @map("archivo_nombre") @db.VarChar(255)
+  archivo_ruta   String  @map("archivo_ruta") @db.VarChar(500)
+  mime           String? @db.VarChar(100)
+  size_bytes     Int?    @map("size_bytes")
+
+  created_at DateTime @default(now()) @map("created_at")
+
+  pedido Pedido @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+
+  @@unique([tipo, serie, numero], name: "uk_tipo_serie_num")
+  @@index([pedido_id], name: "idx_pedido_id")
+  @@map("comprobantes")
+}
+
+model ComprobanteSerie {
+  id          Int    @id @default(autoincrement())
+  tipo        String @db.VarChar(20)
+  serie       String @db.VarChar(10)
+  correlativo Int    @default(0)
+
+  @@unique([tipo, serie], name: "uk_tipo_serie")
+  @@map("comprobante_series")
+}
+
+model NotificacionApp {
+  id              Int       @id @default(autoincrement())
+  usuario_id      Int
+  titulo          String    @db.VarChar(160)
+  mensaje         String    @db.Text
+  tipo            String?   @db.VarChar(40)
+  audience        String    @default("both") @db.VarChar(16)
+  target_route    String?   @db.VarChar(40)
+  target_id       String?   @db.VarChar(80)
+  mostrada_mobile Boolean   @default(false)
+  mostrada_web    Boolean   @default(false)
+  leida           Boolean   @default(false)
+  shown_mobile_at DateTime?
+  shown_web_at    DateTime?
+  read_at         DateTime?
+  created_at      DateTime  @default(now())
+
+  @@index([usuario_id, mostrada_mobile, created_at], name: "idx_notif_usuario_mobile")
+  @@index([usuario_id, mostrada_web, created_at], name: "idx_notif_usuario_web")
+  @@map("notificaciones_app")
+}
+
+model CatalogoDistritosHuancayo {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique @db.VarChar(120)
+  orden_lista Int      @default(0)
+  activo      Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+
+  @@map("catalogo_distritos_huancayo")
+}

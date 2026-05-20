@@ -1,0 +1,25 @@
+{
+  "name": "webnida-bakery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Página web profesional para venta de panes, pasteles y productos de repostería",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run frontend:web\" \"npm run frontend:vite\"",
+    "backend": "powershell -NoProfile -Command \"$ca=(Resolve-Path '.\\\\tools\\\\cacert.pem').Path; & .\\\\tools\\\\php\\\\php.exe -d curl.cainfo=\\\"$ca\\\" -d openssl.cafile=\\\"$ca\\\" -S 0.0.0.0:5001 -t backend\\\\public backend\\\\server.php\"",
+    "frontend": "npm run frontend:web",
+    "frontend:web": "powershell -NoProfile -Command \"Set-Location frontend; ..\\\\tools\\\\php\\\\php.exe -S 127.0.0.1:3000 server.php\"",
+    "frontend:vite": "powershell -NoProfile -Command \"Set-Location frontend; npm run dev\"",
+    "frontend:build": "powershell -NoProfile -Command \"Set-Location frontend; npm run build\"",
+    "build": "npm run frontend:build",
+    "install-all": "npm install && powershell -NoProfile -Command \"Set-Location frontend; npm install\""
+  },
+  "keywords": ["bakery", "pasteles", "panes", "repostería", "ecommerce"],
+  "author": "Delicias Bakery",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  }
+}
