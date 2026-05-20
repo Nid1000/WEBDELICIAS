@@ -1,0 +1,42 @@
+name: Deploy to cPanel FTP
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ftp-deploy:
+    name: Upload files to hosting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to cPanel via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ftp.saborcentral.com
+          username: deploypanaderia@saborcentral.com
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./
+          server-dir: /delicias.saborcentral.com/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/vendor/**
+            **/.env
+            **/.env.*
+            **/.next/cache/**
+            **/storage/framework/**
+            **/storage/logs/**
+            tools/php/**
+            tools/php-*.zip
+            tools/composer.phar
+            tools/composer-installer.sig
+            tools/composer-home/**
