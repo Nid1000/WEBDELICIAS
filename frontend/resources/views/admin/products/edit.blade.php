@@ -3,7 +3,7 @@
 @section('content')
     <section class="grid gap-6 xl:grid-cols-[1fr_320px]">
         <article class="admin-card">
-            <form action="{{ route('web.admin.products.update', $product->id) }}" method="POST" class="grid gap-4 md:grid-cols-2">
+            <form action="{{ route('web.admin.products.update', $product->id) }}" method="POST" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-2">
                 @csrf
                 @method('PATCH')
                 <div class="md:col-span-2">
@@ -27,8 +27,8 @@
                     </select>
                 </div>
                 <div>
-                    <label class="label" for="imagen_url">Imagen URL</label>
-                    <input id="imagen_url" name="imagen_url" value="{{ old('imagen_url', $product->imagen) }}" class="input">
+                    <label class="label" for="imagen">Cambiar imagen</label>
+                    <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="input">
                 </div>
                 <div class="md:col-span-2">
                     <label class="label" for="descripcion">Descripcion</label>

@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 
 class BackendApiClient
@@ -24,6 +25,15 @@ class BackendApiClient
         return $this->request()->post($this->url($path), $payload);
     }
 
+    public function postMultipart(string $path, array $payload, string $field, UploadedFile $file): Response
+    {
+        $handle = fopen($file->getRealPath(), 'r');
+
+        return $this->baseRequest()
+            ->attach($field, $handle, $file->getClientOriginalName())
+            ->post($this->url($path), $payload);
+    }
+
     public function put(string $path, array $payload = []): Response
     {
         return $this->request()->put($this->url($path), $payload);
@@ -41,8 +51,12 @@ class BackendApiClient
 
     public function request(): PendingRequest
     {
+        return $this->baseRequest()->asJson();
+    }
+
+    private function baseRequest(): PendingRequest
+    {
         $client = Http::acceptJson()
-            ->asJson()
             ->timeout(20)
             ->connectTimeout(10)
             ->baseUrl(rtrim((string) config('services.backend.url'), '/'));

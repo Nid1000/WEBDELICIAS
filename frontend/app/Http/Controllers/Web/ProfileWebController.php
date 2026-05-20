@@ -35,7 +35,7 @@ class ProfileWebController extends Controller
         return view('web.profile.show', [
             'user' => $user,
             'stats' => $stats,
-            'distritos' => collect($this->api->okData($districtsResponse, 'distritos', [])),
+            'distritos' => $this->mapDistricts($this->api->okData($districtsResponse, 'distritos', [])),
         ]);
     }
 
@@ -93,5 +93,29 @@ class ProfileWebController extends Controller
         }
 
         return back()->with('success', 'Contrasena actualizada correctamente.');
+    }
+
+    public function markNotificationsSeen(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'ids' => ['nullable', 'array'],
+            'ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $response = $this->api->post('notificaciones/marcar-mostradas', [
+            'ids' => $data['ids'] ?? [],
+            'canal' => 'web',
+        ]);
+
+        if (!$response->successful()) {
+            return back()->with('error', $this->api->errorMessage($response, 'No se pudieron marcar las notificaciones.'));
+        }
+
+        return back();
+    }
+
+    private function mapDistricts(mixed $districts): \Illuminate\Support\Collection
+    {
+        return collect($districts)->map(fn ($district) => is_array($district) ? (object) $district : $district)->values();
     }
 }

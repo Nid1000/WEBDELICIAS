@@ -44,9 +44,157 @@ class FacturacionController extends Controller
         return $this->placeholderImgUrl();
     }
 
+    private function comprobanteFileBase(int $pedidoId, string $serie, int $numero): string
+    {
+        return "pedido-{$pedidoId}-{$serie}-" . str_pad((string) $numero, 8, '0', STR_PAD_LEFT);
+    }
+
+    private function ensureComprobanteArtifacts(object $comprobante, ?object $pedido = null): array
+    {
+        $pedido ??= DB::table('pedidos')->where('id', (int) $comprobante->pedido_id)->first();
+        $fileBase = $this->comprobanteFileBase((int) $comprobante->pedido_id, (string) $comprobante->serie, (int) $comprobante->numero);
+        $dir = $this->comprobantesDir();
+
+        $pdfRel = 'comprobantes/' . $fileBase . '.pdf';
+        $xmlRel = 'comprobantes/' . $fileBase . '.xml';
+        $svgRel = 'comprobantes/' . $fileBase . '.svg';
+        $pdfAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.pdf';
+        $xmlAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.xml';
+        $svgAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.svg';
+
+        $tipo = strtoupper((string) ($comprobante->tipo ?? 'boleta'));
+        $numeroFormateado = (string) ($comprobante->numero_formateado ?? ($comprobante->serie . '-' . str_pad((string) $comprobante->numero, 8, '0', STR_PAD_LEFT)));
+        $total = $pedido ? $this->toFloat($pedido->total ?? 0) : 0.0;
+        $fecha = (string) ($comprobante->created_at ?? now()->format('Y-m-d H:i:s'));
+
+        if (!is_file($pdfAbs)) {
+            $html = '<html><body style="font-family: sans-serif;">'
+                . '<h2 style="margin-bottom: 4px;">Comprobante electronico</h2>'
+                . '<div>Tipo: <b>' . htmlspecialchars($tipo) . '</b></div>'
+                . '<div>Correlativo: <b>' . htmlspecialchars($numeroFormateado) . '</b></div>'
+                . '<div>Pedido: <b>#' . (int) $comprobante->pedido_id . '</b></div>'
+                . '<div>Fecha de emision: <b>' . htmlspecialchars($fecha) . '</b></div>'
+                . '<div>Total: <b>S/ ' . number_format($total, 2, '.', '') . '</b></div>'
+                . '</body></html>';
+
+            $dompdf = new Dompdf();
+            $dompdf->loadHtml($html);
+            $dompdf->render();
+            file_put_contents($pdfAbs, $dompdf->output());
+        }
+
+        if (!is_file($xmlAbs)) {
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+                . '<Comprobante tipo="' . strtolower($tipo) . '" serie="' . $this->escXml((string) $comprobante->serie) . '" numero="' . str_pad((string) $comprobante->numero, 8, '0', STR_PAD_LEFT) . '">' . "\n"
+                . '  <NumeroFormateado>' . $this->escXml($numeroFormateado) . '</NumeroFormateado>' . "\n"
+                . '  <PedidoId>' . (int) $comprobante->pedido_id . '</PedidoId>' . "\n"
+                . '  <Total>' . number_format($total, 2, '.', '') . '</Total>' . "\n"
+                . '</Comprobante>';
+            file_put_contents($xmlAbs, $xml);
+        }
+
+        if (!is_file($svgAbs)) {
+            $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">'
+                . '<rect width="800" height="450" fill="#fff"/>'
+                . '<g font-family="Arial, sans-serif" fill="#111">'
+                . '<text x="40" y="70" font-size="28" font-weight="700">Comprobante electronico</text>'
+                . '<text x="40" y="120" font-size="18">Tipo: ' . $this->escXml($tipo) . '</text>'
+                . '<text x="40" y="150" font-size="18">Numero: ' . $this->escXml($numeroFormateado) . '</text>'
+                . '<text x="40" y="180" font-size="18">Pedido: #' . (int) $comprobante->pedido_id . '</text>'
+                . '<text x="40" y="210" font-size="18">Total: S/ ' . $this->escXml(number_format($total, 2, '.', '')) . '</text>'
+                . '</g></svg>';
+            file_put_contents($svgAbs, $svg);
+        }
+
+        DB::table('comprobantes')->where('id', (int) $comprobante->id)->update([
+            'archivo_ruta' => $pdfRel,
+            'archivo_nombre' => $fileBase . '.pdf',
+            'mime' => 'application/pdf',
+            'size_bytes' => is_file($pdfAbs) ? filesize($pdfAbs) : null,
+        ]);
+
+        return [
+            'pdf' => '/uploads/' . $pdfRel,
+            'xml' => '/uploads/' . $xmlRel,
+            'img' => '/uploads/' . $svgRel,
+        ];
+    }
+
     private function decolectaBaseUrl(): string
     {
-        return env('DECOLECTA_BASE_URL', 'https://api.decolecta.com/v1');
+        return rtrim((string) env('DECOLECTA_BASE_URL', 'https://api.decolecta.com/v1'), '/');
+    }
+
+    private function normalizeDocumentNumber(string $number): string
+    {
+        return preg_replace('/\D+/', '', $number) ?: '';
+    }
+
+    private function isValidDni(string $dni): bool
+    {
+        return preg_match('/^\d{8}$/', $dni) === 1;
+    }
+
+    private function isValidRuc(string $ruc): bool
+    {
+        if (preg_match('/^\d{11}$/', $ruc) !== 1) {
+            return false;
+        }
+
+        if (!in_array(substr($ruc, 0, 2), ['10', '15', '17', '20'], true)) {
+            return false;
+        }
+
+        $weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+        $sum = 0;
+        for ($i = 0; $i < 10; $i++) {
+            $sum += ((int) $ruc[$i]) * $weights[$i];
+        }
+
+        $check = 11 - ($sum % 11);
+        if ($check === 10) {
+            $check = 0;
+        } elseif ($check === 11) {
+            $check = 1;
+        }
+
+        return $check === (int) $ruc[10];
+    }
+
+    private function decolectaToken(Request $request): ?string
+    {
+        $token = trim((string) ($request->header('X-Decolecta-Token') ?: env('DECOLECTA_TOKEN', '')));
+        return $token !== '' ? $token : null;
+    }
+
+    private function normalizeDniResponse(array $data): array
+    {
+        $firstName = (string) ($data['first_name'] ?? $data['nombres'] ?? $data['nombre'] ?? '');
+        $firstLastName = (string) ($data['first_last_name'] ?? $data['apellido_paterno'] ?? $data['ape_paterno'] ?? '');
+        $secondLastName = (string) ($data['second_last_name'] ?? $data['apellido_materno'] ?? $data['ape_materno'] ?? '');
+        $fullName = trim((string) ($data['full_name'] ?? $data['nombre_completo'] ?? "{$firstName} {$firstLastName} {$secondLastName}"));
+
+        return array_filter([
+            'numero' => $data['numero'] ?? $data['dni'] ?? null,
+            'nombres' => $firstName,
+            'apellido_paterno' => $firstLastName,
+            'apellido_materno' => $secondLastName,
+            'nombre_completo' => $fullName,
+            'raw' => $data,
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function normalizeRucResponse(array $data): array
+    {
+        return array_filter([
+            'numero' => $data['numero'] ?? $data['ruc'] ?? null,
+            'razon_social' => $data['razon_social'] ?? $data['nombre_o_razon_social'] ?? null,
+            'nombre_comercial' => $data['nombre_comercial'] ?? null,
+            'estado' => $data['estado'] ?? null,
+            'condicion' => $data['condicion'] ?? null,
+            'direccion' => $data['direccion'] ?? $data['direccion_completa'] ?? null,
+            'raw' => $data,
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     private function decolectaVerifyOption()
@@ -149,30 +297,78 @@ class FacturacionController extends Controller
 
     public function consultaDni(Request $request)
     {
-        $numero = (string) $request->query('numero', '');
-        if (strlen($numero) !== 8) {
-            return response()->json(['statusCode' => 400, 'message' => 'El DNI debe tener 8 dígitos'], 400);
+        $numero = $this->normalizeDocumentNumber((string) $request->query('numero', ''));
+        if (!$this->isValidDni($numero)) {
+            return response()->json([
+                'statusCode' => 400,
+                'error' => 'Documento invalido',
+                'message' => 'El DNI debe tener exactamente 8 digitos numericos',
+            ], 400);
         }
-        $token = $request->header('X-Decolecta-Token') ?: env('DECOLECTA_TOKEN');
+
+        $token = $this->decolectaToken($request);
+        if (!$token) {
+            return response()->json([
+                'statusCode' => 503,
+                'error' => 'Proveedor no configurado',
+                'message' => 'Configura DECOLECTA_TOKEN para consultar DNI en RENIEC',
+            ], 503);
+        }
+
         $data = $this->fetchReniecDni($numero, $token);
         if (!$data) {
-            return response()->json(['statusCode' => 404, 'message' => 'No se encontró información del DNI en RENIEC'], 404);
+            return response()->json([
+                'statusCode' => 404,
+                'error' => 'Documento no encontrado',
+                'message' => 'No se encontro informacion del DNI en RENIEC',
+            ], 404);
         }
-        return response()->json(['statusCode' => 200, 'dni' => $numero, 'data' => $data], 200);
+
+        return response()->json([
+            'statusCode' => 200,
+            'dni' => $numero,
+            'validado' => true,
+            'proveedor' => 'RENIEC',
+            'data' => $this->normalizeDniResponse($data),
+        ], 200);
     }
 
     public function consultaRuc(Request $request)
     {
-        $numero = (string) $request->query('numero', '');
-        if (strlen($numero) !== 11) {
-            return response()->json(['statusCode' => 400, 'message' => 'El RUC debe tener 11 dígitos'], 400);
+        $numero = $this->normalizeDocumentNumber((string) $request->query('numero', ''));
+        if (!$this->isValidRuc($numero)) {
+            return response()->json([
+                'statusCode' => 400,
+                'error' => 'Documento invalido',
+                'message' => 'El RUC debe tener 11 digitos, prefijo valido y digito verificador correcto',
+            ], 400);
         }
-        $token = $request->header('X-Decolecta-Token') ?: env('DECOLECTA_TOKEN');
+
+        $token = $this->decolectaToken($request);
+        if (!$token) {
+            return response()->json([
+                'statusCode' => 503,
+                'error' => 'Proveedor no configurado',
+                'message' => 'Configura DECOLECTA_TOKEN para consultar RUC en SUNAT',
+            ], 503);
+        }
+
         $data = $this->fetchSunatRuc($numero, $token);
         if (!$data) {
-            return response()->json(['statusCode' => 404, 'message' => 'No se encontró información del RUC en SUNAT'], 404);
+            return response()->json([
+                'statusCode' => 404,
+                'error' => 'Documento no encontrado',
+                'message' => 'No se encontro informacion del RUC en SUNAT',
+            ], 404);
         }
-        return response()->json(['statusCode' => 200, 'ruc' => $numero, 'data' => $data], 200);
+
+        return response()->json([
+            'statusCode' => 200,
+            'ruc' => $numero,
+            'validado' => true,
+            'proveedor' => 'SUNAT',
+            'data' => $this->normalizeRucResponse($data),
+        ], 200);
     }
 
     public function emitir(Request $request)
@@ -193,6 +389,24 @@ class FacturacionController extends Controller
                 'error' => 'Datos inválidos',
                 'message' => 'Validación fallida',
                 'details' => $e->errors(),
+            ], 400);
+        }
+
+        $data['numero_documento'] = $this->normalizeDocumentNumber((string) $data['numero_documento']);
+
+        if ($data['tipo_documento'] === 'DNI' && !$this->isValidDni($data['numero_documento'])) {
+            return response()->json([
+                'statusCode' => 400,
+                'error' => 'Documento invalido',
+                'message' => 'El DNI debe tener exactamente 8 digitos numericos',
+            ], 400);
+        }
+
+        if ($data['tipo_documento'] === 'RUC' && !$this->isValidRuc($data['numero_documento'])) {
+            return response()->json([
+                'statusCode' => 400,
+                'error' => 'Documento invalido',
+                'message' => 'El RUC debe tener 11 digitos, prefijo valido y digito verificador correcto',
             ], 400);
         }
 
@@ -236,7 +450,7 @@ class FacturacionController extends Controller
             ->first();
 
         if ($exist) {
-            $fileBase = "pedido-{$pedido->id}-{$exist->serie}-" . str_pad((string) $exist->numero, 8, '0', STR_PAD_LEFT);
+            $archivos = $this->ensureComprobanteArtifacts($exist, $pedido);
             return response()->json([
                 'statusCode' => 200,
                 'message' => 'El comprobante ya fue emitido previamente',
@@ -251,11 +465,7 @@ class FacturacionController extends Controller
                     'total' => $this->toFloat($pedido->total),
                     'created_at' => $exist->created_at,
                 ],
-                'archivos' => [
-                    'pdf' => '/uploads/' . str_replace('\\', '/', (string) $exist->archivo_ruta),
-                    'xml' => "/uploads/comprobantes/{$fileBase}.xml",
-                    'img' => $this->comprobanteImageUrl($fileBase),
-                ],
+                'archivos' => $archivos,
             ], 200);
         }
 
@@ -274,12 +484,30 @@ class FacturacionController extends Controller
         $xmlAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.xml';
         $svgAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.svg';
 
-        $token = $request->header('X-Decolecta-Token') ?: env('DECOLECTA_TOKEN');
+        $token = $this->decolectaToken($request);
+        if (!$token) {
+            return response()->json([
+                'statusCode' => 503,
+                'error' => 'Proveedor no configurado',
+                'message' => 'Configura DECOLECTA_TOKEN para validar el documento antes de emitir el comprobante',
+            ], 503);
+        }
+
         $identidad = null;
         if ($data['tipo_documento'] === 'DNI') {
             $identidad = $this->fetchReniecDni($data['numero_documento'], $token);
         } else {
             $identidad = $this->fetchSunatRuc($data['numero_documento'], $token);
+        }
+
+        if (!$identidad) {
+            return response()->json([
+                'statusCode' => 422,
+                'error' => 'Documento no validado',
+                'message' => $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo validar el DNI en RENIEC'
+                    : 'No se pudo validar el RUC en SUNAT',
+            ], 422);
         }
 
         $total = $this->toFloat($pedido->total);
@@ -444,7 +672,7 @@ class FacturacionController extends Controller
             ->get();
 
         $rows = $items->map(function ($c) {
-            $fileBase = "pedido-{$c->pedido_id}-{$c->serie}-" . str_pad((string) $c->numero, 8, '0', STR_PAD_LEFT);
+            $archivos = $this->ensureComprobanteArtifacts($c, (object) ['total' => $c->pedido_total ?? 0]);
             return [
                 'id' => (int) $c->id,
                 'tipo' => (string) $c->tipo,
@@ -454,11 +682,7 @@ class FacturacionController extends Controller
                 'estado' => 'emitido',
                 'total' => $this->toFloat($c->pedido_total),
                 'created_at' => $c->created_at,
-                'archivos' => [
-                    'pdf' => '/uploads/' . str_replace('\\', '/', (string) $c->archivo_ruta),
-                    'xml' => "/uploads/comprobantes/{$fileBase}.xml",
-                    'img' => $this->comprobanteImageUrl($fileBase),
-                ],
+                'archivos' => $archivos,
                 'cliente' => [
                     'nombre' => trim((string) ($c->u_nombre ?? '') . ' ' . (string) ($c->u_apellido ?? '')) ?: 'Cliente',
                 ],
@@ -497,7 +721,7 @@ class FacturacionController extends Controller
             ->get();
 
         $rows = $items->map(function ($c) {
-            $fileBase = "pedido-{$c->pedido_id}-{$c->serie}-" . str_pad((string) $c->numero, 8, '0', STR_PAD_LEFT);
+            $archivos = $this->ensureComprobanteArtifacts($c, (object) ['total' => $c->pedido_total ?? 0]);
             return [
                 'id' => (int) $c->id,
                 'tipo' => (string) $c->tipo,
@@ -507,11 +731,7 @@ class FacturacionController extends Controller
                 'estado' => 'emitido',
                 'total' => $this->toFloat($c->pedido_total),
                 'created_at' => $c->created_at,
-                'archivos' => [
-                    'pdf' => '/uploads/' . str_replace('\\', '/', (string) $c->archivo_ruta),
-                    'xml' => "/uploads/comprobantes/{$fileBase}.xml",
-                    'img' => $this->comprobanteImageUrl($fileBase),
-                ],
+                'archivos' => $archivos,
                 'cliente' => [
                     'nombre' => trim((string) ($c->u_nombre ?? '') . ' ' . (string) ($c->u_apellido ?? '')) ?: 'Cliente',
                     'razon_social' => null,

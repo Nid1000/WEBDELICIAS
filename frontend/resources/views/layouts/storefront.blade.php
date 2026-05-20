@@ -92,6 +92,49 @@
                     </button>
 
                     @if ($storefrontUser)
+                        <details class="relative">
+                            <summary class="cart-icon-pill list-none" aria-label="Notificaciones">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <path d="M15 17H5a1 1 0 0 1-.8-1.6l1.3-1.7V10a5.5 5.5 0 1 1 11 0v3.7l1.3 1.7A1 1 0 0 1 17 17h-2" />
+                                    <path d="M9 17a3 3 0 0 0 6 0" />
+                                </svg>
+                                @if (($storefrontNotificationsCount ?? 0) > 0)
+                                    <span class="cart-pill-count">{{ $storefrontNotificationsCount }}</span>
+                                @endif
+                            </summary>
+
+                            <div class="absolute right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-amber-100 bg-white p-4 shadow-xl">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div>
+                                        <p class="text-sm font-semibold text-stone-900">Notificaciones</p>
+                                        <p class="text-xs text-stone-500">Avisos para tu cuenta</p>
+                                    </div>
+                                    @if (($storefrontNotificationsCount ?? 0) > 0)
+                                        <form action="{{ route('web.notifications.seen') }}" method="POST">
+                                            @csrf
+                                            @foreach (($storefrontNotifications ?? collect()) as $notification)
+                                                <input type="hidden" name="ids[]" value="{{ $notification->id }}">
+                                            @endforeach
+                                            <button type="submit" class="text-xs font-medium text-[var(--color-secondary)]">Marcar vistas</button>
+                                        </form>
+                                    @endif
+                                </div>
+
+                                <div class="mt-4 space-y-3">
+                                    @forelse (($storefrontNotifications ?? collect()) as $notification)
+                                        <article class="rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                                            <p class="text-sm font-semibold text-stone-900">{{ $notification->title }}</p>
+                                            <p class="mt-1 text-sm text-stone-600">{{ $notification->body }}</p>
+                                            @if ($notification->createdAt)
+                                                <p class="mt-2 text-xs text-stone-500">{{ $notification->createdAt->format('d/m/Y H:i') }}</p>
+                                            @endif
+                                        </article>
+                                    @empty
+                                        <p class="text-sm text-stone-500">No hay notificaciones pendientes.</p>
+                                    @endforelse
+                                </div>
+                            </div>
+                        </details>
                         <a href="{{ route('web.orders') }}" class="hidden text-sm font-medium text-stone-700 transition hover:text-[var(--color-secondary)] xl:inline-flex">
                             Historial
                         </a>

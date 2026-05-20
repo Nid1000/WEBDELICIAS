@@ -385,6 +385,59 @@ class ProductosController extends Controller
         ], 200);
     }
 
+    public function updateImagen(Request $request, int $id)
+    {
+        $existente = DB::table('productos')->where('id', $id)->first();
+        if (!$existente) {
+            return response()->json([
+                'statusCode' => 404,
+                'error' => 'Producto no encontrado',
+                'message' => 'El producto a actualizar no existe',
+            ], 404);
+        }
+
+        try {
+            $request->validate([
+                'imagen' => ['required', 'file', 'mimes:jpeg,jpg,png,gif,webp,jfif', 'max:'.$this->maxUploadKb()],
+            ]);
+        } catch (ValidationException $e) {
+            $errors = $e->errors();
+            return response()->json([
+                'statusCode' => 400,
+                'error' => 'Archivo requerido',
+                'message' => $this->firstValidationMessage($errors),
+                'details' => $errors,
+            ], 400);
+        }
+
+        $file = $request->file('imagen');
+        $dir = public_path('uploads/productos');
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+
+        $ext = strtolower($file->getClientOriginalExtension());
+        $name = 'producto-' . now()->timestamp . '-' . Str::random(8) . '.' . $ext;
+        $file->move($dir, $name);
+
+        DB::table('productos')->where('id', $id)->update([
+            'imagen' => 'productos/' . $name,
+            'updated_at' => now(),
+        ]);
+
+        $p = DB::table('productos')->where('id', $id)->first();
+        $p->precio = (float) $p->precio;
+        $catNombre = $p->categoria_id ? DB::table('categorias')->where('id', (int) $p->categoria_id)->value('nombre') : null;
+        $p->categoria_nombre = $catNombre ?: null;
+        $p->imagen = $this->normalizeImagenField($p->imagen ?? null);
+
+        return response()->json([
+            'statusCode' => 200,
+            'message' => 'Imagen actualizada',
+            'producto' => $p,
+        ], 200);
+    }
+
     public function destroy(int $id)
     {
         $existente = DB::table('productos')->where('id', $id)->first();

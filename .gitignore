@@ -42,6 +42,7 @@ Thumbs.db
 # Build
 dist/
 build/
+frontend/public/hot
 
 # Local portable tooling
 tools/php/

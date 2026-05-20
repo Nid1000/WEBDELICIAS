@@ -26,11 +26,7 @@ class StorefrontController extends Controller
             $products->sortByDesc(fn ($item) => !empty($item['destacado'] ?? false))->take(5)
         );
 
-        $homeCategories = $categories->take(3)->map(function ($category) {
-            $row = (object) $category;
-            $row->imagen_url = $this->resolvePublicImage($row->imagen ?? null, '/images/categories/pan.png');
-            return $row;
-        });
+        $homeCategories = $this->mapCategories($categories)->take(3);
 
         return view('web.home', [
             'user' => $request->session()->get('web_user'),
@@ -83,7 +79,7 @@ class StorefrontController extends Controller
         $products = collect($this->api->okData($productsResponse, 'productos', []));
         $pagination = (array) $this->api->okData($productsResponse, 'pagination', []);
         $categoriesResponse = $this->api->get('categorias');
-        $categories = collect($this->api->okData($categoriesResponse, null, []));
+        $categories = $this->mapCategories(collect($this->api->okData($categoriesResponse, null, [])));
 
         if ($filters['disponible']) {
             $products = $products->filter(fn ($item) => (int) ($item['stock'] ?? 0) > 0);
@@ -113,14 +109,7 @@ class StorefrontController extends Controller
     public function categories(): View
     {
         $categoriesResponse = $this->api->get('categorias');
-        $categories = collect($this->api->okData($categoriesResponse, null, []))
-            ->map(function ($category) {
-                $row = (object) $category;
-                $row->imagen_url = $this->resolvePublicImage($row->imagen ?? null, '/images/categories/pan.png');
-                $row->descripcion = $row->descripcion ?: 'Explora productos artesanales preparados con ingredientes frescos y mucho cuidado.';
-
-                return $row;
-            })
+        $categories = $this->mapCategories(collect($this->api->okData($categoriesResponse, null, [])))
             ->sortBy(fn ($category) => mb_strtolower((string) $category->nombre))
             ->values();
 
@@ -166,6 +155,21 @@ class StorefrontController extends Controller
         });
     }
 
+    private function mapCategories(Collection $categories): Collection
+    {
+        return $categories->map(function ($category) {
+            if (is_array($category)) {
+                $category = (object) $category;
+            }
+
+            $category->imagen_url = $this->resolvePublicImage($category->imagen ?? null, '/images/categories/pan.png');
+            $category->descripcion = ($category->descripcion ?? null)
+                ?: 'Explora productos artesanales preparados con ingredientes frescos y mucho cuidado.';
+
+            return $category;
+        })->values();
+    }
+
     private function mapProduct(object $product): object
     {
         $product->precio = (float) $product->precio;
@@ -189,9 +193,13 @@ class StorefrontController extends Controller
 
         $value = str_replace('\\', '/', $value);
         if (str_starts_with($value, '/')) {
+            if (str_starts_with($value, '/uploads/')) {
+                return $this->api->publicUrl($value);
+            }
+
             return asset(ltrim($value, '/'));
         }
 
-        return asset('uploads/' . ltrim($value, '/'));
+        return $this->api->publicUrl('uploads/' . ltrim($value, '/'));
     }
 }

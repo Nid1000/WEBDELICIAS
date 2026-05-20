@@ -21,10 +21,14 @@ class StorefrontCart
 
         $value = str_replace('\\', '/', $value);
         if (str_starts_with($value, '/')) {
+            if (str_starts_with($value, '/uploads/')) {
+                return app(BackendApiClient::class)->publicUrl($value);
+            }
+
             return asset(ltrim($value, '/'));
         }
 
-        return asset('uploads/' . ltrim($value, '/'));
+        return app(BackendApiClient::class)->publicUrl('uploads/' . ltrim($value, '/'));
     }
 
     public static function items(Request $request): Collection

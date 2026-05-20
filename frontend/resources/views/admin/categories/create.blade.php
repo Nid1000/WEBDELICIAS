@@ -2,7 +2,7 @@
 
 @section('content')
     <section class="admin-card max-w-3xl">
-        <form action="{{ route('web.admin.categories.store') }}" method="POST" class="space-y-4">
+        <form action="{{ route('web.admin.categories.store') }}" method="POST" enctype="multipart/form-data" class="space-y-4">
             @csrf
             <div>
                 <label for="nombre" class="label">Nombre</label>
@@ -13,8 +13,8 @@
                 <textarea id="descripcion" name="descripcion" rows="5" class="input min-h-36">{{ old('descripcion') }}</textarea>
             </div>
             <div>
-                <label for="imagen_url" class="label">Imagen URL</label>
-                <input id="imagen_url" name="imagen_url" value="{{ old('imagen_url') }}" class="input" placeholder="https://...">
+                <label for="imagen" class="label">Imagen de la categoria</label>
+                <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="input">
             </div>
             <div class="flex gap-3">
                 <button class="btn btn-primary">Guardar</button>

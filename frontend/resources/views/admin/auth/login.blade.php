@@ -1,7 +1,7 @@
-@extends('layouts.admin', ['title' => 'Panel de Administracion'])
+@extends('layouts.storefront', ['title' => 'Login administrador'])
 
 @section('content')
-    <section class="admin-login-shell">
+    <section class="admin-login-shell mx-auto max-w-3xl">
         <div class="admin-warning-banner">
             No estas autenticado como administrador.
             <a href="#admin-login-form">Inicia sesion.</a>

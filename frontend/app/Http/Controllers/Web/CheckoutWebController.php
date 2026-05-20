@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\BackendApiClient;
 use App\Support\StorefrontCart;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -20,12 +21,14 @@ class CheckoutWebController extends Controller
     {
         $cartItems = StorefrontCart::items($request);
         $districtsResponse = $this->api->get('usuarios/distritos-huancayo');
+        $minDeliveryDate = now()->addDay()->toDateString();
 
         return view('web.checkout', [
             'cartItems' => $cartItems,
             'cartTotal' => StorefrontCart::total($request),
-            'distritos' => collect($this->api->okData($districtsResponse, 'distritos', [])),
+            'distritos' => $this->mapDistricts($this->api->okData($districtsResponse, 'distritos', [])),
             'user' => $request->session()->get('web_user'),
+            'minDeliveryDate' => $minDeliveryDate,
         ]);
     }
 
@@ -37,7 +40,7 @@ class CheckoutWebController extends Controller
         }
 
         $data = $request->validate([
-            'fecha_entrega' => ['required', 'date_format:Y-m-d', 'after:today'],
+            'fecha_entrega' => ['required', 'date_format:Y-m-d', 'after_or_equal:tomorrow'],
             'direccion_entrega' => ['required', 'string', 'min:5'],
             'distrito_entrega' => ['required', 'string', 'min:2'],
             'numero_casa_entrega' => ['required', 'string', 'min:1'],
@@ -47,9 +50,11 @@ class CheckoutWebController extends Controller
             'tipo_documento' => ['required', 'in:DNI,RUC'],
             'numero_documento' => ['required', 'string'],
         ], [
-            'fecha_entrega.after' => 'La fecha de entrega debe ser desde manana en adelante.',
+            'fecha_entrega.after_or_equal' => 'La fecha de entrega debe ser desde manana en adelante.',
             'telefono_contacto.regex' => 'El telefono debe tener 9 digitos y empezar con 9.',
         ]);
+
+        $data['numero_documento'] = $this->normalizeDocumentNumber($data['numero_documento']);
 
         if ($data['comprobante_tipo'] === 'factura' && $data['tipo_documento'] !== 'RUC') {
             return back()->withInput()->with('error', 'Para emitir factura, el documento debe ser RUC.');
@@ -63,6 +68,21 @@ class CheckoutWebController extends Controller
             return back()->withInput()->with('error', 'El RUC debe tener 11 digitos.');
         }
 
+        $documentPath = $data['tipo_documento'] === 'DNI'
+            ? 'facturacion/consulta-dni'
+            : 'facturacion/consulta-ruc';
+        $documentResponse = $this->api->get($documentPath, ['numero' => $data['numero_documento']]);
+        if (!$documentResponse->successful()) {
+            return back()
+                ->withInput()
+                ->with('error', $this->api->errorMessage(
+                    $documentResponse,
+                    $data['tipo_documento'] === 'DNI'
+                        ? 'No se pudo validar el DNI en RENIEC.'
+                        : 'No se pudo validar el RUC en SUNAT.'
+                ));
+        }
+
         $orderResponse = $this->api->post('pedidos', [
             'productos' => $cartItems->map(fn ($item) => ['id' => $item->id, 'cantidad' => $item->cantidad])->values()->all(),
             'fecha_entrega' => $data['fecha_entrega'],
@@ -72,9 +92,8 @@ class CheckoutWebController extends Controller
             'telefono_contacto' => $data['telefono_contacto'],
             'notas' => $data['notas'] ?? null,
         ]);
-        $orderPayload = $orderResponse->getData(true);
 
-        if ($orderResponse->getStatusCode() >= 400) {
+        if ($orderResponse->failed()) {
             return back()->withInput()->with('error', $this->api->errorMessage($orderResponse, 'No se pudo crear el pedido.'));
         }
 
@@ -89,7 +108,7 @@ class CheckoutWebController extends Controller
 
         StorefrontCart::clear($request);
 
-        if ($invoiceResponse->getStatusCode() >= 400) {
+        if ($invoiceResponse->failed()) {
             return redirect()->route('web.orders.show', $pedidoId)
                 ->with('success', 'Pedido creado correctamente. El comprobante podra emitirse despues.')
                 ->with('error', $this->api->errorMessage($invoiceResponse, 'No se pudo emitir el comprobante.'));
@@ -97,5 +116,87 @@ class CheckoutWebController extends Controller
 
         return redirect()->route('web.orders.show', $pedidoId)
             ->with('success', 'Pedido creado y comprobante emitido correctamente.');
+    }
+
+    public function validateDocument(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'tipo_documento' => ['required', 'in:DNI,RUC'],
+            'numero_documento' => ['required', 'string'],
+        ]);
+
+        $number = $this->normalizeDocumentNumber($data['numero_documento']);
+        if ($data['tipo_documento'] === 'DNI' && !preg_match('/^\d{8}$/', $number)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'El DNI debe tener exactamente 8 digitos.',
+            ], 422);
+        }
+
+        if ($data['tipo_documento'] === 'RUC' && !$this->isValidRuc($number)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'El RUC debe tener 11 digitos y un digito verificador correcto.',
+            ], 422);
+        }
+
+        $path = $data['tipo_documento'] === 'DNI'
+            ? 'facturacion/consulta-dni'
+            : 'facturacion/consulta-ruc';
+        $response = $this->api->get($path, ['numero' => $number]);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'ok' => false,
+                'message' => $this->api->errorMessage(
+                    $response,
+                    $data['tipo_documento'] === 'DNI'
+                        ? 'No se pudo validar el DNI en RENIEC.'
+                        : 'No se pudo validar el RUC en SUNAT.'
+                ),
+            ], $response->status());
+        }
+
+        return response()->json([
+            'ok' => true,
+            'message' => $data['tipo_documento'] === 'DNI'
+                ? 'DNI validado correctamente en RENIEC.'
+                : 'RUC validado correctamente en SUNAT.',
+            'numero' => $number,
+            'data' => data_get($response->json(), 'data'),
+        ]);
+    }
+
+    private function mapDistricts(mixed $districts): \Illuminate\Support\Collection
+    {
+        return collect($districts)->map(fn ($district) => is_array($district) ? (object) $district : $district)->values();
+    }
+
+    private function normalizeDocumentNumber(string $number): string
+    {
+        return preg_replace('/\D+/', '', $number) ?: '';
+    }
+
+    private function isValidRuc(string $number): bool
+    {
+        if (!preg_match('/^\d{11}$/', $number) || !in_array(substr($number, 0, 2), ['10', '15', '17', '20'], true)) {
+            return false;
+        }
+
+        $weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+        $sum = 0;
+        foreach ($weights as $index => $weight) {
+            $sum += ((int) $number[$index]) * $weight;
+        }
+
+        $check = 11 - ($sum % 11);
+        if ($check === 10) {
+            $check = 0;
+        }
+        if ($check === 11) {
+            $check = 1;
+        }
+
+        return $check === (int) $number[10];
     }
 }

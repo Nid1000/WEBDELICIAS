@@ -31,7 +31,9 @@ Route::middleware('web.user')->group(function () {
     Route::get('/perfil', [ProfileWebController::class, 'show'])->name('web.profile');
     Route::patch('/perfil', [ProfileWebController::class, 'updateProfile'])->name('web.profile.update');
     Route::patch('/perfil/password', [ProfileWebController::class, 'updatePassword'])->name('web.profile.password');
+    Route::post('/notificaciones/marcar-vistas', [ProfileWebController::class, 'markNotificationsSeen'])->name('web.notifications.seen');
     Route::get('/checkout', [CheckoutWebController::class, 'show'])->name('web.checkout');
+    Route::post('/checkout/validar-documento', [CheckoutWebController::class, 'validateDocument'])->name('web.checkout.validate-document');
     Route::post('/checkout', [CheckoutWebController::class, 'store'])->name('web.checkout.submit');
     Route::get('/orders', [OrdersWebController::class, 'index'])->name('web.orders');
     Route::get('/historial', [OrdersWebController::class, 'index'])->name('web.history');

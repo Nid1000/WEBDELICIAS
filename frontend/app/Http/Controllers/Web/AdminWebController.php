@@ -82,17 +82,23 @@ class AdminWebController extends Controller
         $data = $request->validate([
             'nombre' => ['required', 'string', 'min:2', 'max:200'],
             'descripcion' => ['nullable', 'string', 'max:2000'],
-            'imagen_url' => ['nullable', 'string', 'max:500'],
+            'imagen' => ['nullable', 'file', 'mimes:jpeg,jpg,png,gif,webp,jfif', 'max:5120'],
         ]);
         $response = $this->api->post('categorias/admin', [
             'nombre' => trim($data['nombre']),
             'descripcion' => $data['descripcion'] ?? null,
-            'imagen' => $data['imagen_url'] ?? null,
         ]);
         if (!$response->successful()) {
             return back()->withInput()->with('error', $this->api->errorMessage($response, 'No se pudo crear la categoria.'));
         }
         $id = (int) data_get($response->json(), 'categoria.id', 0);
+        if ($id > 0 && $request->hasFile('imagen')) {
+            $imageResponse = $this->api->postMultipart('categorias/admin/' . $id . '/imagen', [], 'imagen', $request->file('imagen'));
+            if (!$imageResponse->successful()) {
+                return redirect()->route('web.admin.categories.edit', $id)
+                    ->with('error', $this->api->errorMessage($imageResponse, 'Categoria creada, pero no se pudo subir la imagen.'));
+            }
+        }
 
         return redirect()->route('web.admin.categories.edit', $id)->with('success', 'Categoria creada correctamente.');
     }
@@ -111,15 +117,20 @@ class AdminWebController extends Controller
         $data = $request->validate([
             'nombre' => ['required', 'string', 'min:2', 'max:200'],
             'descripcion' => ['nullable', 'string', 'max:2000'],
-            'imagen_url' => ['nullable', 'string', 'max:500'],
+            'imagen' => ['nullable', 'file', 'mimes:jpeg,jpg,png,gif,webp,jfif', 'max:5120'],
         ]);
         $response = $this->api->put('categorias/admin/' . $id, [
             'nombre' => trim($data['nombre']),
             'descripcion' => $data['descripcion'] ?? null,
-            'imagen' => $data['imagen_url'] ?? null,
         ]);
         if (!$response->successful()) {
             return back()->withInput()->with('error', $this->api->errorMessage($response, 'No se pudo actualizar la categoria.'));
+        }
+        if ($request->hasFile('imagen')) {
+            $imageResponse = $this->api->postMultipart('categorias/admin/' . $id . '/imagen', [], 'imagen', $request->file('imagen'));
+            if (!$imageResponse->successful()) {
+                return back()->with('error', $this->api->errorMessage($imageResponse, 'Categoria actualizada, pero no se pudo subir la imagen.'));
+            }
         }
 
         return back()->with('success', 'Categoria actualizada.');
@@ -192,17 +203,19 @@ class AdminWebController extends Controller
             'categoria_id' => ['required', 'integer', 'min:1'],
             'stock' => ['required', 'integer', 'min:0'],
             'destacado' => ['nullable', 'boolean'],
-            'imagen_url' => ['nullable', 'string', 'max:500'],
+            'imagen' => ['nullable', 'file', 'mimes:jpeg,jpg,png,gif,webp,jfif', 'max:5120'],
         ]);
-        $response = $this->api->post('productos', [
+        $payload = [
             'nombre' => trim($data['nombre']),
             'descripcion' => $data['descripcion'] ?? null,
             'precio' => $data['precio'],
             'categoria_id' => (int) $data['categoria_id'],
             'stock' => (int) $data['stock'],
             'destacado' => $request->boolean('destacado'),
-            'imagen_url' => $data['imagen_url'] ?? null,
-        ]);
+        ];
+        $response = $request->hasFile('imagen')
+            ? $this->api->postMultipart('productos', $payload, 'imagen', $request->file('imagen'))
+            : $this->api->post('productos', $payload);
         if (!$response->successful()) {
             return back()->withInput()->with('error', $this->api->errorMessage($response, 'No se pudo crear el producto.'));
         }
@@ -232,7 +245,7 @@ class AdminWebController extends Controller
             'categoria_id' => ['required', 'integer', 'min:1'],
             'stock' => ['required', 'integer', 'min:0'],
             'destacado' => ['nullable', 'boolean'],
-            'imagen_url' => ['nullable', 'string', 'max:500'],
+            'imagen' => ['nullable', 'file', 'mimes:jpeg,jpg,png,gif,webp,jfif', 'max:5120'],
         ]);
         $response = $this->api->put('productos/' . $id, [
             'nombre' => trim($data['nombre']),
@@ -241,10 +254,15 @@ class AdminWebController extends Controller
             'categoria_id' => (int) $data['categoria_id'],
             'stock' => (int) $data['stock'],
             'destacado' => $request->boolean('destacado'),
-            'imagen_url' => $data['imagen_url'] ?? null,
         ]);
         if (!$response->successful()) {
             return back()->withInput()->with('error', $this->api->errorMessage($response, 'No se pudo actualizar el producto.'));
+        }
+        if ($request->hasFile('imagen')) {
+            $imageResponse = $this->api->postMultipart('productos/' . $id . '/imagen', [], 'imagen', $request->file('imagen'));
+            if (!$imageResponse->successful()) {
+                return back()->with('error', $this->api->errorMessage($imageResponse, 'Producto actualizado, pero no se pudo subir la imagen.'));
+            }
         }
 
         return back()->with('success', 'Producto actualizado.');

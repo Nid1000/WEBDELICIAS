@@ -2,7 +2,7 @@
 
 @section('content')
     <section class="admin-card max-w-4xl">
-        <form action="{{ route('web.admin.products.store') }}" method="POST" class="grid gap-4 md:grid-cols-2">
+        <form action="{{ route('web.admin.products.store') }}" method="POST" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-2">
             @csrf
             <div class="md:col-span-2">
                 <label class="label" for="nombre">Nombre</label>
@@ -26,8 +26,8 @@
                 </select>
             </div>
             <div>
-                <label class="label" for="imagen_url">Imagen URL</label>
-                <input id="imagen_url" name="imagen_url" value="{{ old('imagen_url') }}" class="input">
+                <label class="label" for="imagen">Imagen del producto</label>
+                <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="input">
             </div>
             <div class="md:col-span-2">
                 <label class="label" for="descripcion">Descripcion</label>

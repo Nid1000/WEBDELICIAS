@@ -46,6 +46,7 @@ Route::middleware(['jwt', 'tipo:admin'])->group(function () {
     Route::get('/categorias/admin/{id}', [CategoriasController::class, 'adminShow'])->whereNumber('id');
     Route::post('/categorias/admin', [CategoriasController::class, 'adminCreate']);
     Route::put('/categorias/admin/{id}', [CategoriasController::class, 'adminUpdate'])->whereNumber('id');
+    Route::post('/categorias/admin/{id}/imagen', [CategoriasController::class, 'adminUpdateImagen'])->whereNumber('id');
     Route::put('/categorias/admin/{id}/imagen', [CategoriasController::class, 'adminUpdateImagen'])->whereNumber('id');
     Route::patch('/categorias/admin/{id}/estado', [CategoriasController::class, 'adminEstado'])->whereNumber('id');
     Route::delete('/categorias/admin/{id}', [CategoriasController::class, 'adminDelete'])->whereNumber('id');
@@ -59,6 +60,7 @@ Route::get('/productos/{id}', [ProductosController::class, 'show'])->whereNumber
 Route::middleware(['jwt', 'tipo:admin'])->group(function () {
     Route::post('/productos', [ProductosController::class, 'store']);
     Route::put('/productos/{id}', [ProductosController::class, 'update'])->whereNumber('id');
+    Route::post('/productos/{id}/imagen', [ProductosController::class, 'updateImagen'])->whereNumber('id');
     Route::delete('/productos/{id}', [ProductosController::class, 'destroy'])->whereNumber('id');
 });
 

@@ -75,7 +75,7 @@ class AuthWebController extends Controller
 
         $districtsResponse = $this->api->get('usuarios/distritos-huancayo');
         return view('web.auth.register', [
-            'distritos' => collect($this->api->okData($districtsResponse, 'distritos', [])),
+            'distritos' => $this->mapDistricts($this->api->okData($districtsResponse, 'distritos', [])),
         ]);
     }
 
@@ -142,5 +142,10 @@ class AuthWebController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('web.login')->with('success', 'Sesion cerrada correctamente.');
+    }
+
+    private function mapDistricts(mixed $districts): \Illuminate\Support\Collection
+    {
+        return collect($districts)->map(fn ($district) => is_array($district) ? (object) $district : $district)->values();
     }
 }
