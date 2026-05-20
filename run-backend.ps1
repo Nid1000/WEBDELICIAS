@@ -6,31 +6,30 @@ if (-not (Test-Path -LiteralPath $backend)) {
   throw "No se encontró la carpeta: $backend"
 }
 Set-Location $backend
-
-function Resolve-Cmd([string]$name) {
-  $cmd = Get-Command $name -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-  return $null
+$php = Join-Path $here "tools\php\php.exe"
+if (-not (Test-Path -LiteralPath $php)) {
+  throw "No se encontró PHP portable en: $php"
 }
-
-$php = Resolve-Cmd 'php'
-if (-not $php) {
-  throw "No se encontró 'php' en PATH. Instala PHP 8.2+ y vuelve a ejecutar."
+$composer = Join-Path $here "tools\composer.phar"
+if (-not (Test-Path -LiteralPath $composer)) {
+  throw "No se encontró Composer portable en: $composer"
 }
 
 # Instala dependencias si falta vendor/
 if (-not (Test-Path -LiteralPath (Join-Path $backend 'vendor'))) {
-  $composer = Resolve-Cmd 'composer'
-  if (-not $composer) {
-    throw "Falta vendor/ y no se encontró 'composer' en PATH. Instala Composer y ejecuta: composer install"
-  }
   Write-Host "Ejecutando composer install..." -ForegroundColor Cyan
-  & $composer install --no-interaction
+  & $php $composer install --no-interaction
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $backend '.env'))) {
-  Write-Warning "No existe .env. Copia .env.example a .env y edita DB/JWT_SECRET."
+  Write-Host "Creando backend/.env desde .env.example..." -ForegroundColor Yellow
+  Copy-Item (Join-Path $backend '.env.example') (Join-Path $backend '.env')
+}
+
+if (-not (Select-String -Path (Join-Path $backend '.env') -Pattern '^APP_KEY=base64:' -Quiet)) {
+  Write-Host "Generando APP_KEY para backend..." -ForegroundColor Cyan
+  & $php artisan key:generate --force
 }
 
 Write-Host "Backend Laravel en http://127.0.0.1:5001 (deja esta ventana abierta)" -ForegroundColor Cyan
-& $php artisan serve --host 127.0.0.1 --port 5001
+& $php -S 127.0.0.1:5001 server.php

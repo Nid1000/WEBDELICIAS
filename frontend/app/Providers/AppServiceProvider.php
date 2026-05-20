@@ -26,8 +26,12 @@ class AppServiceProvider extends ServiceProvider
         View::composer('layouts.storefront', function ($view): void {
             $api = app(BackendApiClient::class);
             $categoriesResponse = $api->get('categorias');
+            $categories = collect($api->okData($categoriesResponse, null, []))
+                ->map(fn ($category) => is_array($category) ? (object) $category : $category)
+                ->values();
+
             $view->with('storefrontUser', request()->session()->get('web_user'));
-            $view->with('storefrontCategories', collect($api->okData($categoriesResponse, null, [])));
+            $view->with('storefrontCategories', $categories);
             $view->with('storefrontCartCount', StorefrontCart::count(request()));
         });
 
