@@ -306,6 +306,12 @@
                 inlineName.classList.remove('hidden');
             };
 
+            const setUnavailableInlineName = () => {
+                if (!inlineName) return;
+                inlineName.textContent = `${type.value === 'DNI' ? 'Nombre' : 'Empresa'}: no disponible sin token API`;
+                inlineName.classList.remove('hidden');
+            };
+
             const clearDetails = () => {
                 if (!details) return;
                 details.innerHTML = '';
@@ -407,6 +413,9 @@
                     if (response.ok && !payload.validation_unavailable) {
                         setInlineName(payload);
                         setDetails(payload);
+                    } else if (payload.validation_unavailable) {
+                        setUnavailableInlineName();
+                        clearDetails();
                     } else {
                         clearInlineName();
                         clearDetails();
