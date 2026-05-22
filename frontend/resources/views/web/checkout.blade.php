@@ -132,8 +132,9 @@
                                 <button type="button" class="btn btn-outline-secondary shrink-0" data-document-lookup>Validar</button>
                             </div>
                         </div>
-                        <p class="md:col-span-3 text-sm text-stone-600" data-document-message>
-                            Ingresa un DNI de 8 digitos o un RUC valido de 11 digitos.
+                        <p class="md:col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-600" data-document-message>
+                            <span data-document-message-text>Ingresa un DNI de 8 digitos o un RUC valido de 11 digitos.</span>
+                            <span class="hidden font-semibold text-emerald-700" data-document-inline-name></span>
                         </p>
                         <div class="md:col-span-3 hidden rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" data-document-details></div>
                     </div>
@@ -237,6 +238,8 @@
             const type = document.getElementById('tipo_documento');
             const number = document.getElementById('numero_documento');
             const message = document.querySelector('[data-document-message]');
+            const messageText = document.querySelector('[data-document-message-text]');
+            const inlineName = document.querySelector('[data-document-inline-name]');
             const details = document.querySelector('[data-document-details]');
             const lookup = document.querySelector('[data-document-lookup]');
             const csrf = document.querySelector('input[name="_token"]')?.value || '';
@@ -256,10 +259,51 @@
             };
 
             const setMessage = (text, state = 'neutral') => {
-                message.textContent = text;
+                messageText.textContent = text;
                 message.classList.toggle('text-emerald-700', state === 'success');
                 message.classList.toggle('text-red-600', state === 'error');
                 message.classList.toggle('text-stone-600', state === 'neutral');
+            };
+
+            const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;',
+            }[char]));
+
+            const documentDisplayName = (payload) => {
+                const data = payload?.data || {};
+                if (type.value === 'DNI') {
+                    const fullName = String(data.nombre_completo || '').trim();
+                    if (fullName !== '') return fullName;
+                    return [
+                        data.first_name || data.nombres,
+                        data.first_last_name || data.apellido_paterno,
+                        data.second_last_name || data.apellido_materno,
+                    ].filter(Boolean).join(' ').trim();
+                }
+
+                return String(data.razon_social || data.nombre_o_razon_social || data.nombre_comercial || '').trim();
+            };
+
+            const clearInlineName = () => {
+                if (!inlineName) return;
+                inlineName.textContent = '';
+                inlineName.classList.add('hidden');
+            };
+
+            const setInlineName = (payload) => {
+                if (!inlineName) return;
+                const name = documentDisplayName(payload);
+                if (name === '') {
+                    clearInlineName();
+                    return;
+                }
+
+                inlineName.textContent = `${type.value === 'DNI' ? 'Nombre' : 'Empresa'}: ${name}`;
+                inlineName.classList.remove('hidden');
             };
 
             const clearDetails = () => {
@@ -291,13 +335,7 @@
                 }
 
                 details.innerHTML = visibleRows.map(([label, value]) => (
-                    `<div><span class="font-semibold">${label}:</span> ${String(value).replace(/[&<>"']/g, (char) => ({
-                        '&': '&amp;',
-                        '<': '&lt;',
-                        '>': '&gt;',
-                        '"': '&quot;',
-                        "'": '&#039;',
-                    }[char]))}</div>`
+                    `<div><span class="font-semibold">${label}:</span> ${escapeHtml(value)}</div>`
                 )).join('');
                 details.classList.remove('hidden');
             };
@@ -315,6 +353,7 @@
                 const ok = hasValidFormat();
                 lookupKey = '';
                 clearDetails();
+                clearInlineName();
 
                 setMessage(
                     ok
@@ -345,6 +384,7 @@
                 lookup.disabled = true;
                 setMessage(`Validando ${type.value === 'DNI' ? 'DNI' : 'RUC'}...`);
                 clearDetails();
+                clearInlineName();
 
                 try {
                     const response = await fetch(form.dataset.documentUrl, {
@@ -365,12 +405,15 @@
                         response.ok && (payload.ok || !payload.validation_unavailable) ? 'success' : (payload.validation_unavailable ? 'neutral' : 'error')
                     );
                     if (response.ok && !payload.validation_unavailable) {
+                        setInlineName(payload);
                         setDetails(payload);
                     } else {
+                        clearInlineName();
                         clearDetails();
                     }
                 } catch (error) {
                     lookupKey = '';
+                    clearInlineName();
                     clearDetails();
                     setMessage('No se pudo conectar con el servicio de validacion.', 'error');
                 } finally {
