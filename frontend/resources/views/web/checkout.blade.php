@@ -362,7 +362,7 @@
                     const payload = await response.json();
                     setMessage(
                         payload.message || (response.ok ? 'Documento validado correctamente.' : 'No se pudo validar el documento.'),
-                        response.ok && !payload.validation_unavailable ? 'success' : (payload.validation_unavailable ? 'neutral' : 'error')
+                        response.ok && (payload.ok || !payload.validation_unavailable) ? 'success' : (payload.validation_unavailable ? 'neutral' : 'error')
                     );
                     if (response.ok && !payload.validation_unavailable) {
                         setDetails(payload);

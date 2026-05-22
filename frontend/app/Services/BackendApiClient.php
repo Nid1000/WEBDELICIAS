@@ -69,6 +69,9 @@ class BackendApiClient
         $headers = [];
 
         $apiPeru = trim((string) env('APIPERU_TOKEN', ''));
+        if (in_array(strtolower($apiPeru), ['tu_token_real', 'your_token', 'your_token_here'], true)) {
+            $apiPeru = '';
+        }
         if ($apiPeru !== '') {
             $headers['X-ApiPeru-Token'] = $apiPeru;
         }

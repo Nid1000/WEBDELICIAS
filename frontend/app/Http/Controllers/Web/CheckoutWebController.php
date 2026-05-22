@@ -96,7 +96,7 @@ class CheckoutWebController extends Controller
                     ? 'No se pudo consultar el nombre del DNI en este momento.'
                     : 'No se pudo consultar la razon social del RUC en este momento.');
         }
-        if ((bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
+        if ($this->requiresRealDocumentValidation() && (bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
@@ -104,7 +104,7 @@ class CheckoutWebController extends Controller
                     : 'No se pudo obtener la razon social del RUC. Configura un token de consulta real.');
         }
         $documentName = $this->documentDisplayName($documentResponse->json(), $data['tipo_documento']);
-        if ($documentName === '') {
+        if ($this->requiresRealDocumentValidation() && $documentName === '') {
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
@@ -180,10 +180,10 @@ class CheckoutWebController extends Controller
 
         if (!$response->successful()) {
             return response()->json([
-                'ok' => false,
+                'ok' => true,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'DNI con formato correcto. La consulta de nombres no esta disponible en este momento.'
-                    : 'RUC con formato correcto. La consulta de razon social no esta disponible en este momento.',
+                    ? 'DNI validado por formato.'
+                    : 'RUC validado por formato.',
                 'validation_unavailable' => true,
             ], 200);
         }
@@ -195,10 +195,10 @@ class CheckoutWebController extends Controller
         $providerMessage = (string) data_get($payload, 'message', '');
         if (!$realValidation) {
             return response()->json([
-                'ok' => false,
+                'ok' => true,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'DNI con formato correcto. La consulta de nombres no esta disponible en este momento.'
-                    : 'RUC con formato correcto. La consulta de razon social no esta disponible en este momento.',
+                    ? 'DNI validado por formato.'
+                    : 'RUC validado por formato.',
                 'numero' => $number,
                 'validacion_real' => false,
                 'validation_unavailable' => true,
@@ -231,6 +231,11 @@ class CheckoutWebController extends Controller
     private function mapDistricts(mixed $districts): \Illuminate\Support\Collection
     {
         return collect($districts)->map(fn ($district) => is_array($district) ? (object) $district : $district)->values();
+    }
+
+    private function requiresRealDocumentValidation(): bool
+    {
+        return filter_var(env('DOCUMENT_VALIDATION_REQUIRED', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function documentDisplayName(array $payload, string $type): string
