@@ -66,9 +66,20 @@ class BackendApiClient
             $client = $client->withToken($token);
         }
 
+        $headers = [];
+
+        $apiPeru = trim((string) env('APIPERU_TOKEN', ''));
+        if ($apiPeru !== '') {
+            $headers['X-ApiPeru-Token'] = $apiPeru;
+        }
+
         $decolecta = trim((string) env('DECOLECTA_TOKEN', ''));
         if ($decolecta !== '') {
-            $client = $client->withHeaders(['X-Decolecta-Token' => $decolecta]);
+            $headers['X-Decolecta-Token'] = $decolecta;
+        }
+
+        if ($headers !== []) {
+            $client = $client->withHeaders($headers);
         }
 
         return $client;

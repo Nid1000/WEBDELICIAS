@@ -77,7 +77,14 @@ Route::prefix('admin')->group(function () {
         Route::post('/pedidos/{id}/fecha-entrega', [AdminWebController::class, 'ordersUpdateDeliveryDate'])->whereNumber('id')->name('web.admin.orders.delivery');
 
         Route::get('/comprobantes', [AdminWebController::class, 'receiptsIndex'])->name('web.admin.receipts.index');
+        Route::get('/reservas', [AdminWebController::class, 'reservationsIndex'])->name('web.admin.reservations.index');
+        Route::post('/reservas/{id}/estado', [AdminWebController::class, 'reservationsUpdateState'])->whereNumber('id')->name('web.admin.reservations.state');
+        Route::get('/reservas/exportar', [AdminWebController::class, 'reservationsExport'])->name('web.admin.reservations.export');
+        Route::get('/almacen', [AdminWebController::class, 'warehouseIndex'])->name('web.admin.warehouse.index');
+        Route::post('/almacen/movimientos', [AdminWebController::class, 'warehouseStore'])->name('web.admin.warehouse.store');
+        Route::get('/almacen/exportar', [AdminWebController::class, 'warehouseExport'])->name('web.admin.warehouse.export');
         Route::get('/reportes', [AdminWebController::class, 'reportsIndex'])->name('web.admin.reports.index');
+        Route::get('/reportes/exportar/{tipo}', [AdminWebController::class, 'reportsExport'])->name('web.admin.reports.export');
 
         Route::get('/configuracion', [AdminWebController::class, 'settingsIndex'])->name('web.admin.settings.index');
         Route::post('/configuracion', [AdminWebController::class, 'settingsUpdate'])->name('web.admin.settings.update');

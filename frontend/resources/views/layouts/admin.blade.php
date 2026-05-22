@@ -51,11 +51,23 @@
                     </span>
                     Pedidos
                 </a>
+                <a href="{{ route('web.admin.reservations.index') }}" class="admin-sidebar-link {{ str_starts_with((string) $routeName, 'web.admin.reservations') ? 'admin-sidebar-link-active' : '' }}">
+                    <span class="admin-sidebar-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h3M13 14h3M8 17h3"/></svg>
+                    </span>
+                    Reservas
+                </a>
                 <a href="{{ route('web.admin.products.index') }}" class="admin-sidebar-link {{ str_starts_with((string) $routeName, 'web.admin.products') ? 'admin-sidebar-link-active' : '' }}">
                     <span class="admin-sidebar-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 7 12 4l6 3v10l-6 3-6-3z"/><path d="M6 7l6 3 6-3"/></svg>
                     </span>
                     Productos
+                </a>
+                <a href="{{ route('web.admin.warehouse.index') }}" class="admin-sidebar-link {{ str_starts_with((string) $routeName, 'web.admin.warehouse') ? 'admin-sidebar-link-active' : '' }}">
+                    <span class="admin-sidebar-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8 12 4l8 4-8 4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/></svg>
+                    </span>
+                    Almacen
                 </a>
                 <a href="{{ route('web.admin.categories.index') }}" class="admin-sidebar-link {{ str_starts_with((string) $routeName, 'web.admin.categories') ? 'admin-sidebar-link-active' : '' }}">
                     <span class="admin-sidebar-icon">

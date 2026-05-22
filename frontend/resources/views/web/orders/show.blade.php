@@ -23,7 +23,7 @@
                 </div>
                 <div class="rounded-[1.5rem] border border-amber-100 bg-white p-4">
                     <p class="text-sm text-stone-500">Entrega</p>
-                    <p class="mt-2 font-medium text-stone-900">{{ $order->fecha_entrega ? \Illuminate\Support\Carbon::parse($order->fecha_entrega)->format('d/m/Y') : 'Por confirmar' }}</p>
+                    <p class="mt-2 font-medium text-stone-900">{{ !empty($order->fecha_entrega ?? null) ? \Illuminate\Support\Carbon::parse($order->fecha_entrega)->format('d/m/Y') : 'Por confirmar' }}</p>
                 </div>
                 <div class="rounded-[1.5rem] border border-amber-100 bg-white p-4 md:col-span-2">
                     <p class="text-sm text-stone-500">Direccion</p>
@@ -40,6 +40,23 @@
                 <div class="rounded-[1.5rem] border border-amber-100 bg-white p-4 md:col-span-2">
                     <p class="text-sm text-stone-500">Notas</p>
                     <p class="mt-2 font-medium text-stone-900">{{ $order->notas ?: 'Sin notas adicionales.' }}</p>
+                </div>
+                <div class="rounded-[1.5rem] border border-amber-100 bg-white p-4 md:col-span-2">
+                    <p class="text-sm text-stone-500">Pago</p>
+                    <p class="mt-2 font-medium text-stone-900">
+                        {{ match($order->metodo_pago ?? null) {
+                            'yape' => 'Yape',
+                            'tarjeta' => 'Tarjeta',
+                            'contra_entrega' => 'Efectivo contra entrega',
+                            default => 'Por confirmar',
+                        } }}
+                        @if (!empty($order->estado_pago ?? null))
+                            <span class="text-sm text-stone-500">({{ ucfirst($order->estado_pago) }})</span>
+                        @endif
+                    </p>
+                    @if (!empty($order->pago_referencia ?? null))
+                        <p class="mt-1 text-sm text-stone-500">{{ $order->pago_referencia }}</p>
+                    @endif
                 </div>
             </div>
 

@@ -7,6 +7,43 @@
 @endphp
 
 @section('content')
+    <style>
+        .product-grid {
+            align-items: stretch;
+        }
+
+        .product-card {
+            border-radius: 1.5rem;
+        }
+
+        .product-image-wrap {
+            display: block;
+            aspect-ratio: 16 / 10;
+            max-height: 14rem;
+        }
+
+        .product-badges {
+            left: 0.75rem;
+            right: 0.75rem;
+            top: 0.75rem;
+        }
+
+        .product-category {
+            bottom: 0.75rem;
+            left: 0.75rem;
+        }
+
+        .product-card-body {
+            padding: 1rem;
+        }
+
+        @media (min-width: 1280px) {
+            .product-image-wrap {
+                max-height: 13rem;
+            }
+        }
+    </style>
+
     <section class="page-hero">
         <div class="page-hero-split">
             <div class="max-w-3xl">

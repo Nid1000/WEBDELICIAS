@@ -11,6 +11,8 @@ use App\Http\Controllers\NotificacionesController;
 use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\ContactoController;
 use App\Http\Controllers\ChatbotController;
+use App\Http\Controllers\AdminReservasController;
+use App\Http\Controllers\AdminAlmacenController;
 use Illuminate\Support\Facades\DB;
 
 // Nota: Laravel ya prefija estas rutas con /api (routes/api.php).
@@ -109,6 +111,17 @@ Route::middleware(['jwt', 'tipo:admin'])->group(function () {
     Route::get('/facturacion/admin/comprobantes', [FacturacionController::class, 'adminComprobantes']);
 });
 
+// Reservas y almacen (admin)
+Route::middleware(['jwt', 'tipo:admin'])->group(function () {
+    Route::get('/reservas/admin/todas', [AdminReservasController::class, 'index']);
+    Route::patch('/reservas/admin/{id}/estado', [AdminReservasController::class, 'updateEstado'])->whereNumber('id');
+    Route::get('/reservas/admin/exportar', [AdminReservasController::class, 'export']);
+
+    Route::get('/almacen/admin/movimientos', [AdminAlmacenController::class, 'index']);
+    Route::post('/almacen/admin/movimientos', [AdminAlmacenController::class, 'store']);
+    Route::get('/almacen/admin/exportar', [AdminAlmacenController::class, 'export']);
+});
+
 // Notificaciones
 Route::middleware(['jwt', 'tipo:usuario'])->group(function () {
     Route::get('/notificaciones/pendientes', [NotificacionesController::class, 'pendientes']);
@@ -128,6 +141,9 @@ Route::middleware(['jwt', 'tipo:admin'])->prefix('reportes/admin')->group(functi
     Route::get('/ventas-mensuales', [ReportesController::class, 'ventasMensuales']);
     Route::get('/top-productos', [ReportesController::class, 'topProductos']);
     Route::get('/top-categorias', [ReportesController::class, 'topCategorias']);
+    Route::get('/exportar/ventas', [ReportesController::class, 'exportVentas']);
+    Route::get('/exportar/pedidos', [ReportesController::class, 'exportPedidos']);
+    Route::get('/exportar/productos', [ReportesController::class, 'exportProductos']);
 });
 
 // Contacto (público)

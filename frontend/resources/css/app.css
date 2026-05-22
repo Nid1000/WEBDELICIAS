@@ -492,11 +492,11 @@
     }
 
     .product-card {
-        @apply overflow-hidden rounded-[2rem] border border-amber-200/80 bg-white/95 shadow-md shadow-amber-100/25 transition duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-amber-100/50;
+        @apply overflow-hidden rounded-[1.5rem] border border-amber-200/80 bg-white/95 shadow-md shadow-amber-100/25 transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-100/50;
     }
 
     .product-image-wrap {
-        @apply relative aspect-[4/3] overflow-hidden;
+        @apply relative block aspect-[16/10] max-h-56 overflow-hidden;
     }
 
     .product-image {
@@ -504,7 +504,7 @@
     }
 
     .product-badges {
-        @apply absolute inset-x-4 top-4 flex flex-wrap gap-2;
+        @apply absolute inset-x-3 top-3 flex flex-wrap gap-2;
     }
 
     .badge {
@@ -528,7 +528,11 @@
     }
 
     .product-category {
-        @apply absolute bottom-4 left-4 backdrop-blur;
+        @apply absolute bottom-3 left-3 backdrop-blur;
+    }
+
+    .product-card-body {
+        @apply p-4;
     }
 
     .category-spotlight {

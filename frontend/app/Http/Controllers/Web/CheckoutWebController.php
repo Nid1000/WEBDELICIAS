@@ -29,6 +29,8 @@ class CheckoutWebController extends Controller
             'distritos' => $this->mapDistricts($this->api->okData($districtsResponse, 'distritos', [])),
             'user' => $request->session()->get('web_user'),
             'minDeliveryDate' => $minDeliveryDate,
+            'yapeQrUrl' => env('YAPE_QR_URL', asset('images/payments/yape-qr.svg')),
+            'yapePhone' => env('YAPE_PHONE', '993560096'),
         ]);
     }
 
@@ -49,9 +51,16 @@ class CheckoutWebController extends Controller
             'comprobante_tipo' => ['required', 'in:boleta,factura'],
             'tipo_documento' => ['required', 'in:DNI,RUC'],
             'numero_documento' => ['required', 'string'],
+            'metodo_pago' => ['required', 'in:contra_entrega,tarjeta,yape'],
+            'tarjeta_titular' => ['nullable', 'string', 'max:120'],
+            'tarjeta_ultimos' => ['nullable', 'regex:/^\d{4}$/'],
+            'tarjeta_vencimiento' => ['nullable', 'regex:/^(0[1-9]|1[0-2])\/\d{2}$/'],
+            'yape_operacion' => ['nullable', 'string', 'max:40'],
+            'acepta_pago' => ['accepted'],
         ], [
             'fecha_entrega.after_or_equal' => 'La fecha de entrega debe ser desde manana en adelante.',
             'telefono_contacto.regex' => 'El telefono debe tener 9 digitos y empezar con 9.',
+            'acepta_pago.accepted' => 'Debes aceptar las condiciones del pago.',
         ]);
 
         $data['numero_documento'] = $this->normalizeDocumentNumber($data['numero_documento']);
@@ -68,6 +77,14 @@ class CheckoutWebController extends Controller
             return back()->withInput()->with('error', 'El RUC debe tener 11 digitos.');
         }
 
+        if ($data['metodo_pago'] === 'tarjeta' && (empty($data['tarjeta_titular']) || empty($data['tarjeta_ultimos']) || empty($data['tarjeta_vencimiento']))) {
+            return back()->withInput()->with('error', 'Completa los datos de la tarjeta.');
+        }
+
+        if ($data['metodo_pago'] === 'yape' && empty($data['yape_operacion'])) {
+            return back()->withInput()->with('error', 'Ingresa el numero de operacion de Yape.');
+        }
+
         $documentPath = $data['tipo_documento'] === 'DNI'
             ? 'facturacion/consulta-dni'
             : 'facturacion/consulta-ruc';
@@ -75,12 +92,24 @@ class CheckoutWebController extends Controller
         if (!$documentResponse->successful()) {
             return back()
                 ->withInput()
-                ->with('error', $this->api->errorMessage(
-                    $documentResponse,
-                    $data['tipo_documento'] === 'DNI'
-                        ? 'No se pudo validar el DNI en RENIEC.'
-                        : 'No se pudo validar el RUC en SUNAT.'
-                ));
+                ->with('error', $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.'
+                    : 'No se pudo obtener la razon social del RUC. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.');
+        }
+        if ((bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
+            return back()
+                ->withInput()
+                ->with('error', $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI. Configura un token de consulta real.'
+                    : 'No se pudo obtener la razon social del RUC. Configura un token de consulta real.');
+        }
+        $documentName = $this->documentDisplayName($documentResponse->json(), $data['tipo_documento']);
+        if ($documentName === '') {
+            return back()
+                ->withInput()
+                ->with('error', $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI consultado.'
+                    : 'No se pudo obtener la razon social del RUC consultado.');
         }
 
         $orderResponse = $this->api->post('pedidos', [
@@ -91,6 +120,10 @@ class CheckoutWebController extends Controller
             'numero_casa_entrega' => $data['numero_casa_entrega'],
             'telefono_contacto' => $data['telefono_contacto'],
             'notas' => $data['notas'] ?? null,
+            'metodo_pago' => $data['metodo_pago'],
+            'pago_referencia' => $data['metodo_pago'] === 'tarjeta'
+                ? 'Tarjeta ****' . $data['tarjeta_ultimos'] . ' - ' . trim((string) $data['tarjeta_titular']) . ' - ' . $data['tarjeta_vencimiento']
+                : ($data['metodo_pago'] === 'yape' ? 'Operacion Yape: ' . trim((string) $data['yape_operacion']) : 'Pago contra entrega'),
         ]);
 
         if ($orderResponse->failed()) {
@@ -148,28 +181,82 @@ class CheckoutWebController extends Controller
         if (!$response->successful()) {
             return response()->json([
                 'ok' => false,
-                'message' => $this->api->errorMessage(
-                    $response,
-                    $data['tipo_documento'] === 'DNI'
-                        ? 'No se pudo validar el DNI en RENIEC.'
-                        : 'No se pudo validar el RUC en SUNAT.'
-                ),
+                'message' => $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.'
+                    : 'No se pudo obtener la razon social del RUC. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.',
             ], $response->status());
+        }
+
+        $payload = $response->json();
+        $documentData = data_get($payload, 'data', []);
+        $name = $this->documentDisplayName($payload, $data['tipo_documento']);
+        $realValidation = (bool) data_get($payload, 'validacion_real', false);
+        $providerMessage = (string) data_get($payload, 'message', '');
+        if (!$realValidation) {
+            return response()->json([
+                'ok' => false,
+                'message' => $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI. Configura un token de consulta real.'
+                    : 'No se pudo obtener la razon social del RUC. Configura un token de consulta real.',
+                'numero' => $number,
+                'validacion_real' => false,
+                'data' => $documentData,
+            ], 422);
+        }
+        if ($name === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => $data['tipo_documento'] === 'DNI'
+                    ? 'No se pudo obtener el nombre del DNI consultado.'
+                    : 'No se pudo obtener la razon social del RUC consultado.',
+                'numero' => $number,
+                'validacion_real' => true,
+                'data' => $documentData,
+            ], 404);
         }
 
         return response()->json([
             'ok' => true,
-            'message' => $data['tipo_documento'] === 'DNI'
-                ? 'DNI validado correctamente en RENIEC.'
-                : 'RUC validado correctamente en SUNAT.',
+            'message' => $name !== ''
+                ? ($data['tipo_documento'] === 'DNI' ? "DNI validado: {$name}" : "RUC validado: {$name}")
+                : ($providerMessage ?: ($data['tipo_documento'] === 'DNI' ? 'DNI validado correctamente.' : 'RUC validado correctamente.')),
             'numero' => $number,
-            'data' => data_get($response->json(), 'data'),
+            'validacion_real' => $realValidation,
+            'data' => $documentData,
         ]);
     }
 
     private function mapDistricts(mixed $districts): \Illuminate\Support\Collection
     {
         return collect($districts)->map(fn ($district) => is_array($district) ? (object) $district : $district)->values();
+    }
+
+    private function documentDisplayName(array $payload, string $type): string
+    {
+        $data = data_get($payload, 'data', []);
+        if (!is_array($data)) {
+            return '';
+        }
+
+        if ($type === 'DNI') {
+            $fullName = trim((string) ($data['nombre_completo'] ?? ''));
+            if ($fullName !== '') {
+                return $fullName;
+            }
+
+            return trim((string) (
+                ($data['first_name'] ?? $data['nombres'] ?? '') . ' '
+                . ($data['first_last_name'] ?? $data['apellido_paterno'] ?? '') . ' '
+                . ($data['second_last_name'] ?? $data['apellido_materno'] ?? '')
+            ));
+        }
+
+        return trim((string) (
+            $data['razon_social']
+            ?? $data['nombre_o_razon_social']
+            ?? $data['nombre_comercial']
+            ?? ''
+        ));
     }
 
     private function normalizeDocumentNumber(string $number): string

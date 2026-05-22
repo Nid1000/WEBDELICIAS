@@ -12,7 +12,7 @@
                 <span class="badge badge-danger">Agotado</span>
             @endif
         </div>
-        @if ($product->categoria_nombre)
+        @if (!empty($product->categoria_nombre))
             <span class="badge badge-surface product-category">{{ $product->categoria_nombre }}</span>
         @endif
     </a>

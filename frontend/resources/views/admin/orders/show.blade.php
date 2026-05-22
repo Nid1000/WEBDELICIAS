@@ -29,6 +29,24 @@
 
         <article class="space-y-6">
             <div class="admin-card">
+                <h4 class="text-xl font-semibold text-stone-950">Pago</h4>
+                <div class="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
+                    <p class="font-semibold text-stone-900">
+                        {{ match($order->metodo_pago ?? null) {
+                            'yape' => 'Yape',
+                            'tarjeta' => 'Tarjeta',
+                            'contra_entrega' => 'Efectivo contra entrega',
+                            default => 'Por confirmar',
+                        } }}
+                    </p>
+                    <p class="mt-1 text-sm text-stone-500">Estado: {{ ucfirst($order->estado_pago ?? 'pendiente') }}</p>
+                    @if (!empty($order->pago_referencia ?? null))
+                        <p class="mt-2 text-sm text-stone-600">{{ $order->pago_referencia }}</p>
+                    @endif
+                </div>
+            </div>
+
+            <div class="admin-card">
                 <h4 class="text-xl font-semibold text-stone-950">Actualizar estado</h4>
                 <form action="{{ route('web.admin.orders.state', $order->id) }}" method="POST" class="mt-4 space-y-4">
                     @csrf

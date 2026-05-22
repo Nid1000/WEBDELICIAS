@@ -475,6 +475,94 @@ class AdminWebController extends Controller
         ]);
     }
 
+    public function reservationsIndex(Request $request): View
+    {
+        $filters = [
+            'buscar' => trim((string) $request->query('buscar', '')),
+            'estado' => (string) $request->query('estado', ''),
+            'desde' => (string) $request->query('desde', ''),
+            'hasta' => (string) $request->query('hasta', ''),
+        ];
+        $response = $this->api->get('reservas/admin/todas', array_filter([
+            'pagina' => (int) $request->query('pagina', 1),
+            'limite' => 20,
+            'buscar' => $filters['buscar'] ?: null,
+            'estado' => $filters['estado'] ?: null,
+            'desde' => $filters['desde'] ?: null,
+            'hasta' => $filters['hasta'] ?: null,
+        ], fn ($value) => $value !== null && $value !== ''));
+
+        return view('admin.reservations.index', [
+            'reservations' => collect($this->api->okData($response, 'reservas', []))->map(fn ($item) => (object) $item),
+            'filters' => $filters,
+            'pagination' => (array) $this->api->okData($response, 'pagination', []),
+        ]);
+    }
+
+    public function reservationsUpdateState(Request $request, int $id): RedirectResponse
+    {
+        $data = $request->validate([
+            'estado' => ['required', 'in:pendiente,confirmada,asistio,cancelada'],
+        ]);
+        $response = $this->api->patch('reservas/admin/' . $id . '/estado', $data);
+        if (!$response->successful()) {
+            return back()->with('error', $this->api->errorMessage($response, 'No se pudo actualizar la reserva.'));
+        }
+
+        return back()->with('success', 'Reserva actualizada.');
+    }
+
+    public function reservationsExport(Request $request)
+    {
+        return $this->downloadFromApi('reservas/admin/exportar', $request->only(['buscar', 'estado', 'desde', 'hasta']));
+    }
+
+    public function warehouseIndex(Request $request): View
+    {
+        $filters = [
+            'producto_id' => (int) $request->query('producto_id', 0),
+            'tipo_movimiento' => (string) $request->query('tipo_movimiento', ''),
+            'desde' => (string) $request->query('desde', ''),
+            'hasta' => (string) $request->query('hasta', ''),
+        ];
+        $response = $this->api->get('almacen/admin/movimientos', array_filter([
+            'pagina' => (int) $request->query('pagina', 1),
+            'limite' => 20,
+            'producto_id' => $filters['producto_id'] > 0 ? $filters['producto_id'] : null,
+            'tipo_movimiento' => $filters['tipo_movimiento'] ?: null,
+            'desde' => $filters['desde'] ?: null,
+            'hasta' => $filters['hasta'] ?: null,
+        ], fn ($value) => $value !== null && $value !== ''));
+
+        return view('admin.warehouse.index', [
+            'movements' => collect($this->api->okData($response, 'movimientos', []))->map(fn ($item) => (object) $item),
+            'products' => $this->allProducts(),
+            'filters' => $filters,
+            'pagination' => (array) $this->api->okData($response, 'pagination', []),
+        ]);
+    }
+
+    public function warehouseStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'producto_id' => ['required', 'integer', 'min:1'],
+            'tipo_movimiento' => ['required', 'in:entrada,salida'],
+            'cantidad' => ['required', 'integer', 'min:1'],
+            'motivo' => ['nullable', 'string', 'max:255'],
+        ]);
+        $response = $this->api->post('almacen/admin/movimientos', $data);
+        if (!$response->successful()) {
+            return back()->withInput()->with('error', $this->api->errorMessage($response, 'No se pudo registrar el movimiento.'));
+        }
+
+        return back()->with('success', 'Movimiento de almacen registrado.');
+    }
+
+    public function warehouseExport(Request $request)
+    {
+        return $this->downloadFromApi('almacen/admin/exportar', $request->only(['producto_id', 'tipo_movimiento', 'desde', 'hasta']));
+    }
+
     public function reportsIndex(Request $request): View
     {
         $mode = (string) $request->query('modo', 'diario');
@@ -515,6 +603,17 @@ class AdminWebController extends Controller
             'topProducts' => $topProducts,
             'topCategories' => $topCategories,
         ]);
+    }
+
+    public function reportsExport(Request $request, string $tipo)
+    {
+        $endpoint = match ($tipo) {
+            'pedidos' => 'reportes/admin/exportar/pedidos',
+            'productos' => 'reportes/admin/exportar/productos',
+            default => 'reportes/admin/exportar/ventas',
+        };
+
+        return $this->downloadFromApi($endpoint, $request->only(['modo', 'desde', 'hasta']));
     }
 
     public function settingsIndex(): View
@@ -577,6 +676,25 @@ class AdminWebController extends Controller
     {
         $response = $this->api->get('categorias/admin/todos', ['pagina' => 1, 'limite' => 200, 'activo' => 'true']);
         return $this->mapCategories(collect($this->api->okData($response, 'categorias', [])));
+    }
+
+    private function allProducts(): Collection
+    {
+        $response = $this->api->get('productos', ['pagina' => 1, 'limite' => 500]);
+        return $this->mapProducts(collect($this->api->okData($response, 'productos', [])));
+    }
+
+    private function downloadFromApi(string $path, array $query)
+    {
+        $response = $this->api->get($path, array_filter($query, fn ($value) => $value !== null && $value !== ''));
+        if (!$response->successful()) {
+            return back()->with('error', $this->api->errorMessage($response, 'No se pudo descargar el archivo.'));
+        }
+
+        return response($response->body(), 200, [
+            'Content-Type' => $response->header('Content-Type', 'text/csv; charset=UTF-8'),
+            'Content-Disposition' => $response->header('Content-Disposition', 'attachment; filename="export.csv"'),
+        ]);
     }
 
     private function mapCategories(Collection $categories): Collection

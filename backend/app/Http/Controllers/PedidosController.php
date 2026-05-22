@@ -67,6 +67,33 @@ class PedidosController extends Controller
         }
     }
 
+    private function ensurePagoColumns(): void
+    {
+        try {
+            $driver = DB::getDriverName();
+        } catch (\Throwable) {
+            return;
+        }
+
+        if (!in_array($driver, ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
+        $dbName = (string) (env('DB_DATABASE') ?: '');
+        if ($dbName === '') {
+            return;
+        }
+
+        $exists = DB::selectOne(
+            "SELECT 1 as ok FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'referencia' LIMIT 1",
+            [$dbName]
+        );
+
+        if (!$exists) {
+            DB::statement("ALTER TABLE pagos ADD COLUMN referencia VARCHAR(255) NULL AFTER estado");
+        }
+    }
+
     private function toFloat($n): float
     {
         return is_numeric($n) ? (float) $n : (float) (string) $n;
@@ -76,6 +103,7 @@ class PedidosController extends Controller
     {
         $payload = $request->attributes->get('user');
         $usuarioId = is_array($payload) ? (int) ($payload['id'] ?? 0) : 0;
+        $this->ensurePagoColumns();
 
         try {
             $data = $request->validate([
@@ -89,6 +117,8 @@ class PedidosController extends Controller
                 'direccion_id' => ['nullable', 'integer'],
                 'telefono_contacto' => ['nullable', 'string'],
                 'notas' => ['nullable', 'string'],
+                'metodo_pago' => ['nullable', 'in:yape,tarjeta,contra_entrega'],
+                'pago_referencia' => ['nullable', 'string', 'max:255'],
             ]);
         } catch (ValidationException $e) {
             return response()->json([
@@ -166,6 +196,15 @@ class PedidosController extends Controller
                 ]);
             }
 
+            DB::table('pagos')->insert([
+                'pedido_id' => $pedidoId,
+                'metodo' => $data['metodo_pago'] ?? 'contra_entrega',
+                'monto' => (string) $total,
+                'estado' => ($data['metodo_pago'] ?? 'contra_entrega') === 'contra_entrega' ? 'pendiente' : 'pagado',
+                'referencia' => $data['pago_referencia'] ?? null,
+                'fecha' => now(),
+            ]);
+
             return DB::table('pedidos')->where('id', $pedidoId)->first();
         });
 
@@ -196,6 +235,8 @@ class PedidosController extends Controller
             'created_at' => $pedidoCreado->created_at,
             'cliente_nombre' => $usuario ? trim($usuario->nombre.' '.$usuario->apellido) : null,
             'cliente_email' => $usuario?->email ?? null,
+            'metodo_pago' => $data['metodo_pago'] ?? 'contra_entrega',
+            'pago_referencia' => $data['pago_referencia'] ?? null,
         ];
 
         $detallesForEmail = $det->map(function ($d) use ($prods) {
@@ -284,6 +325,7 @@ class PedidosController extends Controller
     {
         $payload = $request->attributes->get('user');
         $usuarioId = is_array($payload) ? (int) ($payload['id'] ?? 0) : 0;
+        $this->ensurePagoColumns();
 
         $pagina = max(1, (int) ($request->query('pagina', '1')));
         $limite = max(1, (int) ($request->query('limite', '10')));
@@ -348,6 +390,7 @@ class PedidosController extends Controller
             ->first();
 
         $comp = DB::table('comprobantes')->where('pedido_id', $id)->orderBy('created_at', 'desc')->first();
+        $pago = DB::table('pagos')->where('pedido_id', $id)->orderBy('fecha', 'desc')->first();
         $detalles = DB::table('pedido_detalles')->where('pedido_id', $id)->get();
         $prodIds = $detalles->pluck('producto_id')->filter()->unique()->values()->all();
         $prods = DB::table('productos')->whereIn('id', $prodIds)->select(['id', 'nombre', 'imagen', 'precio'])->get()->keyBy('id');
@@ -359,6 +402,7 @@ class PedidosController extends Controller
                 'total' => $this->toFloat($pedido->total),
                 'estado' => $pedido->estado,
                 'created_at' => $pedido->created_at,
+                'fecha_entrega' => $pedido->fecha_entrega ?? null,
                 'notas' => $pedido->notas ?? null,
                 'direccion_entrega' => $pedido->direccion_entrega ?? null,
                 'distrito_entrega' => $pedido->distrito_entrega ?? null,
@@ -367,7 +411,10 @@ class PedidosController extends Controller
                 'cliente_nombre' => $usuario ? trim($usuario->nombre . ' ' . $usuario->apellido) : null,
                 'cliente_email' => $usuario?->email ?? null,
                 'cliente_telefono' => $usuario?->telefono ?? null,
-                'metodo_pago' => $comp?->tipo ?? null,
+                'metodo_pago' => $pago?->metodo ?? null,
+                'estado_pago' => $pago?->estado ?? null,
+                'monto_pago' => $pago ? $this->toFloat($pago->monto) : null,
+                'pago_referencia' => $pago?->referencia ?? null,
                 'comprobante_numero' => $comp?->numero_formateado ?? null,
             ],
             'detalles' => $detalles->map(function ($d) use ($prods) {
@@ -420,6 +467,7 @@ class PedidosController extends Controller
     public function adminList(Request $request)
     {
         $this->ensureRepartoColumns();
+        $this->ensurePagoColumns();
 
         $pagina = max(1, (int) ($request->query('pagina', '1')));
         $limite = max(1, (int) ($request->query('limite', '20')));
@@ -459,15 +507,17 @@ class PedidosController extends Controller
         $pedidoIds = $pedidos->pluck('id')->all();
         $detalles = count($pedidoIds) ? DB::table('pedido_detalles')->whereIn('pedido_id', $pedidoIds)->get() : collect();
         $byPedido = $detalles->groupBy('pedido_id');
+        $pagos = count($pedidoIds) ? DB::table('pagos')->whereIn('pedido_id', $pedidoIds)->get()->keyBy('pedido_id') : collect();
 
         $userIds = $pedidos->pluck('usuario_id')->filter()->unique()->values()->all();
         $users = count($userIds)
             ? DB::table('usuarios')->whereIn('id', $userIds)->select(['id', 'nombre', 'apellido', 'email'])->get()->keyBy('id')
             : collect();
 
-        $rows = $pedidos->map(function ($p) use ($byPedido, $users) {
+        $rows = $pedidos->map(function ($p) use ($byPedido, $users, $pagos) {
             $ds = $byPedido[(int) $p->id] ?? collect();
             $u = $p->usuario_id ? ($users[(int) $p->usuario_id] ?? null) : null;
+            $pago = $pagos[(int) $p->id] ?? null;
             return [
                 'id' => (int) $p->id,
                 'usuario' => $u ? [
@@ -486,6 +536,9 @@ class PedidosController extends Controller
                 'salida_reparto_at' => property_exists($p, 'salida_reparto_at') ? ($p->salida_reparto_at ?? null) : null,
                 'conductor' => property_exists($p, 'conductor') ? ($p->conductor ?? null) : null,
                 'vehiculo' => property_exists($p, 'vehiculo') ? ($p->vehiculo ?? null) : null,
+                'metodo_pago' => $pago?->metodo ?? null,
+                'estado_pago' => $pago?->estado ?? null,
+                'pago_referencia' => $pago?->referencia ?? null,
                 'total_productos' => $ds->reduce(fn ($acc, $d) => $acc + (int) $d->cantidad, 0),
             ];
         });
@@ -505,6 +558,7 @@ class PedidosController extends Controller
     public function adminShow(int $id)
     {
         $this->ensureRepartoColumns();
+        $this->ensurePagoColumns();
 
         $p = DB::table('pedidos')->where('id', $id)->first();
         if (!$p) {
@@ -520,6 +574,7 @@ class PedidosController extends Controller
             : null;
 
         $detalles = DB::table('pedido_detalles')->where('pedido_id', $id)->get();
+        $pago = DB::table('pagos')->where('pedido_id', $id)->orderBy('fecha', 'desc')->first();
         $prodIds = $detalles->pluck('producto_id')->filter()->unique()->values()->all();
         $prods = DB::table('productos')->whereIn('id', $prodIds)->select(['id', 'nombre', 'imagen', 'precio'])->get()->keyBy('id');
 
@@ -544,6 +599,10 @@ class PedidosController extends Controller
                 'salida_reparto_at' => property_exists($p, 'salida_reparto_at') ? ($p->salida_reparto_at ?? null) : null,
                 'conductor' => property_exists($p, 'conductor') ? ($p->conductor ?? null) : null,
                 'vehiculo' => property_exists($p, 'vehiculo') ? ($p->vehiculo ?? null) : null,
+                'metodo_pago' => $pago?->metodo ?? null,
+                'estado_pago' => $pago?->estado ?? null,
+                'monto_pago' => $pago ? $this->toFloat($pago->monto) : null,
+                'pago_referencia' => $pago?->referencia ?? null,
             ],
             'detalles' => $detalles->map(function ($d) use ($prods) {
                 $prod = $d->producto_id ? ($prods[(int) $d->producto_id] ?? null) : null;

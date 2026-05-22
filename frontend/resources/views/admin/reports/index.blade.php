@@ -26,6 +26,21 @@
         </form>
     </section>
 
+    <section class="admin-card mt-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="eyebrow">Semana 4</p>
+                <h3 class="mt-2 text-2xl font-semibold text-stone-950">Reportes con data para Excel</h3>
+                <p class="mt-1 text-sm text-stone-600">Descarga ventas, pedidos y productos vendidos segun el rango de fecha aplicado.</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <a href="{{ route('web.admin.reports.export', array_merge(['tipo' => 'ventas'], request()->only(['modo', 'desde', 'hasta']))) }}" class="btn btn-outline-secondary">Excel ventas</a>
+                <a href="{{ route('web.admin.reports.export', array_merge(['tipo' => 'pedidos'], request()->only(['desde', 'hasta']))) }}" class="btn btn-outline-secondary">Excel pedidos</a>
+                <a href="{{ route('web.admin.reports.export', array_merge(['tipo' => 'productos'], request()->only(['desde', 'hasta']))) }}" class="btn btn-outline-secondary">Excel productos</a>
+            </div>
+        </div>
+    </section>
+
     <section class="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <article class="admin-card">
             <h3 class="text-2xl font-semibold text-stone-950">Serie de ventas</h3>

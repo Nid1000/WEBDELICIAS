@@ -125,6 +125,46 @@ class FacturacionController extends Controller
         return rtrim((string) env('DECOLECTA_BASE_URL', 'https://api.decolecta.com/v1'), '/');
     }
 
+    private function apiperuBaseUrl(): string
+    {
+        return rtrim((string) env('APIPERU_BASE_URL', 'https://apiperu.dev/api'), '/');
+    }
+
+    private function documentValidationRequired(): bool
+    {
+        return filter_var(env('DOCUMENT_VALIDATION_REQUIRED', true), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function documentProvider(): string
+    {
+        return strtolower(trim((string) env('DOCUMENT_PROVIDER', 'apiperu'))) ?: 'apiperu';
+    }
+
+    private function apiPeruToken(Request $request): ?string
+    {
+        $token = trim((string) ($request->header('X-ApiPeru-Token') ?: env('APIPERU_TOKEN', '')));
+
+        return $token !== '' ? $token : null;
+    }
+
+    private function decolectaToken(Request $request, string $provider): ?string
+    {
+        $providerToken = match ($provider) {
+            'reniec' => env('RENIEC_API_TOKEN', ''),
+            'sunat' => env('SUNAT_API_TOKEN', ''),
+            default => '',
+        };
+
+        $token = trim((string) (
+            $request->header('X-Decolecta-Token')
+            ?: $providerToken
+            ?: env('DECOLECTA_API_TOKEN', '')
+            ?: env('DECOLECTA_TOKEN', '')
+        ));
+
+        return $token !== '' ? $token : null;
+    }
+
     private function normalizeDocumentNumber(string $number): string
     {
         return preg_replace('/\D+/', '', $number) ?: '';
@@ -161,10 +201,16 @@ class FacturacionController extends Controller
         return $check === (int) $ruc[10];
     }
 
-    private function decolectaToken(Request $request): ?string
+    private function providerToken(Request $request, string $provider): ?string
     {
-        $token = trim((string) ($request->header('X-Decolecta-Token') ?: env('DECOLECTA_TOKEN', '')));
-        return $token !== '' ? $token : null;
+        return $this->documentProvider() === 'apiperu'
+            ? $this->apiPeruToken($request)
+            : $this->decolectaToken($request, $provider);
+    }
+
+    private function providerName(): string
+    {
+        return $this->documentProvider() === 'apiperu' ? 'APIPERU' : 'DECOLECTA';
     }
 
     private function normalizeDniResponse(array $data): array
@@ -176,6 +222,9 @@ class FacturacionController extends Controller
 
         return array_filter([
             'numero' => $data['numero'] ?? $data['dni'] ?? null,
+            'first_name' => $firstName,
+            'first_last_name' => $firstLastName,
+            'second_last_name' => $secondLastName,
             'nombres' => $firstName,
             'apellido_paterno' => $firstLastName,
             'apellido_materno' => $secondLastName,
@@ -188,13 +237,34 @@ class FacturacionController extends Controller
     {
         return array_filter([
             'numero' => $data['numero'] ?? $data['ruc'] ?? null,
-            'razon_social' => $data['razon_social'] ?? $data['nombre_o_razon_social'] ?? null,
-            'nombre_comercial' => $data['nombre_comercial'] ?? null,
+            'razon_social' => $data['razon_social'] ?? $data['social_reason'] ?? $data['company_name'] ?? $data['nombre_o_razon_social'] ?? null,
+            'nombre_o_razon_social' => $data['nombre_o_razon_social'] ?? $data['razon_social'] ?? $data['social_reason'] ?? $data['company_name'] ?? null,
+            'nombre_comercial' => $data['nombre_comercial'] ?? $data['trade_name'] ?? $data['commercial_name'] ?? null,
             'estado' => $data['estado'] ?? null,
             'condicion' => $data['condicion'] ?? null,
-            'direccion' => $data['direccion'] ?? $data['direccion_completa'] ?? null,
+            'direccion' => $data['direccion'] ?? $data['direccion_completa'] ?? $data['domicilio_fiscal'] ?? $data['domicilio'] ?? null,
             'raw' => $data,
         ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function localDniResponse(string $dni): array
+    {
+        return [
+            'numero' => $dni,
+            'nombre_completo' => 'DNI con formato valido',
+            'validacion' => 'local',
+            'mensaje' => 'RENIEC no esta configurado. Se valido solo el formato del DNI.',
+        ];
+    }
+
+    private function localRucResponse(string $ruc): array
+    {
+        return [
+            'numero' => $ruc,
+            'razon_social' => 'RUC con formato valido',
+            'validacion' => 'local',
+            'mensaje' => 'SUNAT no esta configurado. Se valido solo el formato y digito verificador del RUC.',
+        ];
     }
 
     private function decolectaVerifyOption()
@@ -217,6 +287,15 @@ class FacturacionController extends Controller
         if (!$token) {
             return null;
         }
+
+        if ($this->documentProvider() === 'apiperu') {
+            $apiperu = $this->fetchApiperuDni($dni, $token);
+            if ($apiperu) {
+                return $apiperu;
+            }
+            return null;
+        }
+
         try {
             $resp = Http::withToken($token)
                 ->withOptions(['verify' => $this->decolectaVerifyOption()])
@@ -239,6 +318,15 @@ class FacturacionController extends Controller
         if (!$token) {
             return null;
         }
+
+        if ($this->documentProvider() === 'apiperu') {
+            $apiperu = $this->fetchApiperuRuc($ruc, $token);
+            if ($apiperu) {
+                return $apiperu;
+            }
+            return null;
+        }
+
         try {
             $resp = Http::withToken($token)
                 ->withOptions(['verify' => $this->decolectaVerifyOption()])
@@ -252,6 +340,70 @@ class FacturacionController extends Controller
             }
             return $resp->json();
         } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function fetchApiperuDni(string $dni, ?string $token): ?array
+    {
+        if (!$token) {
+            return null;
+        }
+
+        try {
+            $resp = Http::withToken($token)
+                ->acceptJson()
+                ->asJson()
+                ->withOptions(['verify' => $this->decolectaVerifyOption()])
+                ->timeout(15)
+                ->connectTimeout(10)
+                ->post($this->apiperuBaseUrl() . '/dni', [
+                    'dni' => $dni,
+                ]);
+
+            if (!$resp->ok()) {
+                return null;
+            }
+
+            $payload = $resp->json();
+            if (($payload['success'] ?? false) !== true) {
+                return null;
+            }
+
+            return (array) ($payload['data'] ?? []);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function fetchApiperuRuc(string $ruc, ?string $token): ?array
+    {
+        if (!$token) {
+            return null;
+        }
+
+        try {
+            $resp = Http::withToken($token)
+                ->acceptJson()
+                ->asJson()
+                ->withOptions(['verify' => $this->decolectaVerifyOption()])
+                ->timeout(15)
+                ->connectTimeout(10)
+                ->post($this->apiperuBaseUrl() . '/ruc', [
+                    'ruc' => $ruc,
+                ]);
+
+            if (!$resp->ok()) {
+                return null;
+            }
+
+            $payload = $resp->json();
+            if (($payload['success'] ?? false) !== true) {
+                return null;
+            }
+
+            return (array) ($payload['data'] ?? []);
+        } catch (\Throwable) {
             return null;
         }
     }
@@ -306,21 +458,47 @@ class FacturacionController extends Controller
             ], 400);
         }
 
-        $token = $this->decolectaToken($request);
+        $token = $this->providerToken($request, 'reniec');
         if (!$token) {
+            if (!$this->documentValidationRequired()) {
+                return response()->json([
+                    'statusCode' => 200,
+                    'dni' => $numero,
+                    'validado' => true,
+                    'validacion_real' => false,
+                    'proveedor' => 'FORMATO_LOCAL',
+                    'message' => 'Solo se valido el formato del DNI.',
+                    'data' => $this->localDniResponse($numero),
+                ], 200);
+            }
+
             return response()->json([
                 'statusCode' => 503,
                 'error' => 'Proveedor no configurado',
-                'message' => 'Configura DECOLECTA_TOKEN para consultar DNI en RENIEC',
+                'message' => $this->documentProvider() === 'apiperu'
+                    ? 'Configura APIPERU_TOKEN en backend/.env para consultar DNI real'
+                    : 'Configura RENIEC_API_TOKEN o DECOLECTA_TOKEN en backend/.env para consultar DNI real',
             ], 503);
         }
 
         $data = $this->fetchReniecDni($numero, $token);
         if (!$data) {
+            if (!$this->documentValidationRequired()) {
+                return response()->json([
+                    'statusCode' => 200,
+                    'dni' => $numero,
+                    'validado' => true,
+                    'validacion_real' => false,
+                    'proveedor' => 'FORMATO_LOCAL',
+                    'message' => 'No se pudo conectar con RENIEC. Se valido el formato del DNI para continuar.',
+                    'data' => $this->localDniResponse($numero),
+                ], 200);
+            }
+
             return response()->json([
                 'statusCode' => 404,
                 'error' => 'Documento no encontrado',
-                'message' => 'No se encontro informacion del DNI en RENIEC',
+                'message' => 'No se encontro informacion del DNI en ' . $this->providerName(),
             ], 404);
         }
 
@@ -328,7 +506,8 @@ class FacturacionController extends Controller
             'statusCode' => 200,
             'dni' => $numero,
             'validado' => true,
-            'proveedor' => 'RENIEC',
+            'validacion_real' => true,
+            'proveedor' => $this->providerName(),
             'data' => $this->normalizeDniResponse($data),
         ], 200);
     }
@@ -344,21 +523,47 @@ class FacturacionController extends Controller
             ], 400);
         }
 
-        $token = $this->decolectaToken($request);
+        $token = $this->providerToken($request, 'sunat');
         if (!$token) {
+            if (!$this->documentValidationRequired()) {
+                return response()->json([
+                    'statusCode' => 200,
+                    'ruc' => $numero,
+                    'validado' => true,
+                    'validacion_real' => false,
+                    'proveedor' => 'FORMATO_LOCAL',
+                    'message' => 'Solo se valido el formato del RUC.',
+                    'data' => $this->localRucResponse($numero),
+                ], 200);
+            }
+
             return response()->json([
                 'statusCode' => 503,
                 'error' => 'Proveedor no configurado',
-                'message' => 'Configura DECOLECTA_TOKEN para consultar RUC en SUNAT',
+                'message' => $this->documentProvider() === 'apiperu'
+                    ? 'Configura APIPERU_TOKEN en backend/.env para consultar RUC real'
+                    : 'Configura SUNAT_API_TOKEN o DECOLECTA_TOKEN en backend/.env para consultar RUC real',
             ], 503);
         }
 
         $data = $this->fetchSunatRuc($numero, $token);
         if (!$data) {
+            if (!$this->documentValidationRequired()) {
+                return response()->json([
+                    'statusCode' => 200,
+                    'ruc' => $numero,
+                    'validado' => true,
+                    'validacion_real' => false,
+                    'proveedor' => 'FORMATO_LOCAL',
+                    'message' => 'No se pudo conectar con SUNAT. Se valido el formato del RUC para continuar.',
+                    'data' => $this->localRucResponse($numero),
+                ], 200);
+            }
+
             return response()->json([
                 'statusCode' => 404,
                 'error' => 'Documento no encontrado',
-                'message' => 'No se encontro informacion del RUC en SUNAT',
+                'message' => 'No se encontro informacion del RUC en ' . $this->providerName(),
             ], 404);
         }
 
@@ -366,7 +571,8 @@ class FacturacionController extends Controller
             'statusCode' => 200,
             'ruc' => $numero,
             'validado' => true,
-            'proveedor' => 'SUNAT',
+            'validacion_real' => true,
+            'proveedor' => $this->providerName(),
             'data' => $this->normalizeRucResponse($data),
         ], 200);
     }
@@ -484,30 +690,44 @@ class FacturacionController extends Controller
         $xmlAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.xml';
         $svgAbs = $dir . DIRECTORY_SEPARATOR . $fileBase . '.svg';
 
-        $token = $this->decolectaToken($request);
+        $token = $this->providerToken($request, $data['tipo_documento'] === 'DNI' ? 'reniec' : 'sunat');
         if (!$token) {
-            return response()->json([
-                'statusCode' => 503,
-                'error' => 'Proveedor no configurado',
-                'message' => 'Configura DECOLECTA_TOKEN para validar el documento antes de emitir el comprobante',
-            ], 503);
+            if ($this->documentValidationRequired()) {
+                return response()->json([
+                    'statusCode' => 503,
+                    'error' => 'Proveedor no configurado',
+                    'message' => $this->documentProvider() === 'apiperu'
+                        ? 'Configura APIPERU_TOKEN en backend/.env para validar el documento antes de emitir el comprobante'
+                        : 'Configura RENIEC_API_TOKEN, SUNAT_API_TOKEN o DECOLECTA_TOKEN en backend/.env para validar el documento antes de emitir el comprobante',
+                ], 503);
+            }
         }
 
         $identidad = null;
-        if ($data['tipo_documento'] === 'DNI') {
+        if (!$token && $data['tipo_documento'] === 'DNI') {
+            $identidad = $this->localDniResponse($data['numero_documento']);
+        } elseif (!$token && $data['tipo_documento'] === 'RUC') {
+            $identidad = $this->localRucResponse($data['numero_documento']);
+        } elseif ($data['tipo_documento'] === 'DNI') {
             $identidad = $this->fetchReniecDni($data['numero_documento'], $token);
         } else {
             $identidad = $this->fetchSunatRuc($data['numero_documento'], $token);
         }
 
         if (!$identidad) {
-            return response()->json([
-                'statusCode' => 422,
-                'error' => 'Documento no validado',
-                'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo validar el DNI en RENIEC'
-                    : 'No se pudo validar el RUC en SUNAT',
-            ], 422);
+            if (!$this->documentValidationRequired()) {
+                $identidad = $data['tipo_documento'] === 'DNI'
+                    ? $this->localDniResponse($data['numero_documento'])
+                    : $this->localRucResponse($data['numero_documento']);
+            } else {
+                return response()->json([
+                    'statusCode' => 422,
+                    'error' => 'Documento no validado',
+                    'message' => $data['tipo_documento'] === 'DNI'
+                        ? 'No se pudo validar el DNI en RENIEC'
+                        : 'No se pudo validar el RUC en SUNAT',
+                ], 422);
+            }
         }
 
         $total = $this->toFloat($pedido->total);
@@ -517,6 +737,9 @@ class FacturacionController extends Controller
         if ($data['tipo_documento'] === 'DNI') {
             if (is_array($identidad)) {
                 $clienteNombre = trim(($identidad['first_name'] ?? '') . ' ' . ($identidad['first_last_name'] ?? '') . ' ' . ($identidad['second_last_name'] ?? ''));
+                if ($clienteNombre === '') {
+                    $clienteNombre = (string) ($identidad['nombre_completo'] ?? '');
+                }
                 $verificadoTexto = 'Sí';
             }
         } else {
@@ -524,6 +747,10 @@ class FacturacionController extends Controller
                 $clienteNombre = (string) ($identidad['razon_social'] ?? $identidad['nombre_o_razon_social'] ?? $identidad['nombre_comercial'] ?? '');
                 $verificadoTexto = 'Sí';
             }
+        }
+
+        if (is_array($identidad) && ($identidad['validacion'] ?? '') === 'local') {
+            $verificadoTexto = 'Solo formato';
         }
 
         // PDF simple (Dompdf)
