@@ -318,7 +318,7 @@
 
                 setMessage(
                     ok
-                        ? 'Formato correcto. Validando documento...'
+                        ? 'Formato correcto. Presiona Validar para consultar los datos.'
                         : (type.value === 'DNI'
                         ? 'El DNI debe tener exactamente 8 digitos.'
                         : 'El RUC debe tener 11 digitos y digito verificador correcto.'),
@@ -327,9 +327,6 @@
 
                 if (lookupTimer) {
                     clearTimeout(lookupTimer);
-                }
-                if (ok) {
-                    lookupTimer = setTimeout(() => validateWithProvider(), 550);
                 }
             };
 
@@ -365,9 +362,9 @@
                     const payload = await response.json();
                     setMessage(
                         payload.message || (response.ok ? 'Documento validado correctamente.' : 'No se pudo validar el documento.'),
-                        response.ok ? 'success' : 'error'
+                        response.ok && !payload.validation_unavailable ? 'success' : (payload.validation_unavailable ? 'neutral' : 'error')
                     );
-                    if (response.ok) {
+                    if (response.ok && !payload.validation_unavailable) {
                         setDetails(payload);
                     } else {
                         clearDetails();

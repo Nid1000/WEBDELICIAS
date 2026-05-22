@@ -182,9 +182,10 @@ class CheckoutWebController extends Controller
             return response()->json([
                 'ok' => false,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo consultar el nombre del DNI en este momento.'
-                    : 'No se pudo consultar la razon social del RUC en este momento.',
-            ], $response->status());
+                    ? 'DNI con formato correcto. La consulta de nombres no esta disponible en este momento.'
+                    : 'RUC con formato correcto. La consulta de razon social no esta disponible en este momento.',
+                'validation_unavailable' => true,
+            ], 200);
         }
 
         $payload = $response->json();
@@ -196,12 +197,13 @@ class CheckoutWebController extends Controller
             return response()->json([
                 'ok' => false,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo obtener el nombre del DNI. Configura un token de consulta real.'
-                    : 'No se pudo obtener la razon social del RUC. Configura un token de consulta real.',
+                    ? 'DNI con formato correcto. La consulta de nombres no esta disponible en este momento.'
+                    : 'RUC con formato correcto. La consulta de razon social no esta disponible en este momento.',
                 'numero' => $number,
                 'validacion_real' => false,
+                'validation_unavailable' => true,
                 'data' => $documentData,
-            ], 422);
+            ], 200);
         }
         if ($name === '') {
             return response()->json([
