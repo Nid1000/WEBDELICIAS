@@ -110,7 +110,7 @@
                         <textarea id="notas" name="notas" rows="3" class="input min-h-28" placeholder="Instrucciones adicionales">{{ old('notas') }}</textarea>
                     </div>
 
-                    <div class="grid gap-4 md:grid-cols-3" data-document-validation data-document-url="{{ route('web.checkout.validate-document') }}">
+                    <div class="grid gap-4 md:grid-cols-[1fr_1fr_1.45fr]" data-document-validation data-document-url="{{ route('web.checkout.validate-document') }}">
                         <div>
                             <label for="comprobante_tipo" class="label">Comprobante</label>
                             <select id="comprobante_tipo" name="comprobante_tipo" class="input">
@@ -128,7 +128,7 @@
                         <div>
                             <label for="numero_documento" class="label">Numero</label>
                             <div class="flex gap-2">
-                                <input id="numero_documento" name="numero_documento" type="text" required value="{{ old('numero_documento') }}" class="input min-w-0 flex-1" inputmode="numeric" autocomplete="off">
+                                <input id="numero_documento" name="numero_documento" type="text" required value="{{ old('numero_documento') }}" class="input min-w-[9ch] flex-1" inputmode="numeric" autocomplete="off">
                                 <button type="button" class="btn btn-outline-secondary shrink-0" data-document-lookup>Validar</button>
                             </div>
                         </div>
@@ -347,6 +347,7 @@
                 lookupKey = currentKey;
                 lookup.disabled = true;
                 setMessage(`Validando ${type.value === 'DNI' ? 'DNI' : 'RUC'}...`);
+                clearDetails();
 
                 try {
                     const response = await fetch(form.dataset.documentUrl, {

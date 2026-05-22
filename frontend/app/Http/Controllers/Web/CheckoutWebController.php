@@ -93,8 +93,8 @@ class CheckoutWebController extends Controller
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo obtener el nombre del DNI. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.'
-                    : 'No se pudo obtener la razon social del RUC. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.');
+                    ? 'No se pudo consultar el nombre del DNI en este momento.'
+                    : 'No se pudo consultar la razon social del RUC en este momento.');
         }
         if ((bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
             return back()
@@ -182,8 +182,8 @@ class CheckoutWebController extends Controller
             return response()->json([
                 'ok' => false,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo obtener el nombre del DNI. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.'
-                    : 'No se pudo obtener la razon social del RUC. Configura APIPERU_TOKEN en backend/.env y reinicia el backend.',
+                    ? 'No se pudo consultar el nombre del DNI en este momento.'
+                    : 'No se pudo consultar la razon social del RUC en este momento.',
             ], $response->status());
         }
 
