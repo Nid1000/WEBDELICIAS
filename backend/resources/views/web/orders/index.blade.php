@@ -20,8 +20,9 @@
                             <p class="mt-2 text-sm text-stone-600">
                                 Creado el {{ \Illuminate\Support\Carbon::parse($order->created_at)->format('d/m/Y H:i') }}
                             </p>
-                            @if ($order->fecha_entrega)
-                                <p class="mt-1 text-sm text-stone-600">Entrega: {{ \Illuminate\Support\Carbon::parse($order->fecha_entrega)->format('d/m/Y') }}</p>
+                            @php($fechaEntrega = data_get($order, 'fecha_entrega'))
+                            @if (!empty($fechaEntrega))
+                                <p class="mt-1 text-sm text-stone-600">Entrega: {{ \Illuminate\Support\Carbon::parse($fechaEntrega)->format('d/m/Y') }}</p>
                             @endif
                         </div>
                         <div class="text-right">
