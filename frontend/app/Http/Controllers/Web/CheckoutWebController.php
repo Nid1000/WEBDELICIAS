@@ -93,18 +93,18 @@ class CheckoutWebController extends Controller
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo consultar el nombre del DNI en este momento.'
-                    : 'No se pudo consultar la razon social del RUC en este momento.');
+                    ? 'No se pudo consultar el nombre real del DNI en este momento.'
+                    : 'No se pudo consultar la razon social real del RUC en este momento.');
         }
-        if ($this->requiresRealDocumentValidation() && (bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
+        if ((bool) data_get($documentResponse->json(), 'validacion_real', false) !== true) {
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
-                    ? 'No se pudo obtener el nombre del DNI. Configura un token de consulta real.'
-                    : 'No se pudo obtener la razon social del RUC. Configura un token de consulta real.');
+                    ? 'No se pudo obtener el nombre real del DNI. Configura APIPERU_TOKEN.'
+                    : 'No se pudo obtener la razon social real del RUC. Configura APIPERU_TOKEN.');
         }
         $documentName = $this->documentDisplayName($documentResponse->json(), $data['tipo_documento']);
-        if ($this->requiresRealDocumentValidation() && $documentName === '') {
+        if ($documentName === '') {
             return back()
                 ->withInput()
                 ->with('error', $data['tipo_documento'] === 'DNI'
@@ -179,13 +179,18 @@ class CheckoutWebController extends Controller
         $response = $this->api->get($path, ['numero' => $number]);
 
         if (!$response->successful()) {
+            $backendMessage = (string) data_get($response->json(), 'message', '');
             return response()->json([
-                'ok' => true,
-                'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'DNI validado por formato.'
-                    : 'RUC validado por formato.',
+                'ok' => false,
+                'message' => $backendMessage !== ''
+                    ? $backendMessage
+                    : ($data['tipo_documento'] === 'DNI'
+                        ? 'No se pudo validar DNI con APIPERU.'
+                        : 'No se pudo validar RUC con APIPERU.'),
                 'validation_unavailable' => true,
-            ], 200);
+                'numero' => $number,
+                'validacion_real' => false,
+            ], 503);
         }
 
         $payload = $response->json();
@@ -195,15 +200,15 @@ class CheckoutWebController extends Controller
         $providerMessage = (string) data_get($payload, 'message', '');
         if (!$realValidation) {
             return response()->json([
-                'ok' => true,
+                'ok' => false,
                 'message' => $data['tipo_documento'] === 'DNI'
-                    ? 'DNI validado por formato.'
-                    : 'RUC validado por formato.',
+                    ? 'La validacion en linea del DNI no devolvio datos reales.'
+                    : 'La validacion en linea del RUC no devolvio datos reales.',
                 'numero' => $number,
                 'validacion_real' => false,
                 'validation_unavailable' => true,
                 'data' => $documentData,
-            ], 200);
+            ], 503);
         }
         if ($name === '') {
             return response()->json([
@@ -235,7 +240,7 @@ class CheckoutWebController extends Controller
 
     private function requiresRealDocumentValidation(): bool
     {
-        return filter_var(env('DOCUMENT_VALIDATION_REQUIRED', false), FILTER_VALIDATE_BOOLEAN);
+        return filter_var(env('DOCUMENT_VALIDATION_REQUIRED', true), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function documentDisplayName(array $payload, string $type): string

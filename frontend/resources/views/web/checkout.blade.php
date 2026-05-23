@@ -306,12 +306,6 @@
                 inlineName.classList.remove('hidden');
             };
 
-            const setUnavailableInlineName = () => {
-                if (!inlineName) return;
-                inlineName.textContent = `${type.value === 'DNI' ? 'Nombre' : 'Empresa'}: no disponible sin token API`;
-                inlineName.classList.remove('hidden');
-            };
-
             const clearDetails = () => {
                 if (!details) return;
                 details.innerHTML = '';
@@ -408,14 +402,13 @@
                     const payload = await response.json();
                     setMessage(
                         payload.message || (response.ok ? 'Documento validado correctamente.' : 'No se pudo validar el documento.'),
-                        response.ok && (payload.ok || !payload.validation_unavailable) ? 'success' : (payload.validation_unavailable ? 'neutral' : 'error')
+                        response.ok && payload.ok
+                            ? (payload.validation_unavailable ? 'neutral' : 'success')
+                            : 'error'
                     );
-                    if (response.ok && !payload.validation_unavailable) {
+                    if (response.ok && payload.ok && !payload.validation_unavailable) {
                         setInlineName(payload);
                         setDetails(payload);
-                    } else if (payload.validation_unavailable) {
-                        setUnavailableInlineName();
-                        clearDetails();
                     } else {
                         clearInlineName();
                         clearDetails();
