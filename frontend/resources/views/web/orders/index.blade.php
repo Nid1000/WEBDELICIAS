@@ -61,8 +61,9 @@
                                 <h3 class="history-card-title">{{ ucfirst($order->estado) }}</h3>
                                 <p class="history-card-meta">
                                     {{ \Illuminate\Support\Carbon::parse($order->created_at)->format('d/m/Y H:i') }}
-                                    @if ($order->fecha_entrega)
-                                        · Entrega {{ \Illuminate\Support\Carbon::parse($order->fecha_entrega)->format('d/m/Y') }}
+                                    @php($fechaEntrega = data_get($order, 'fecha_entrega'))
+                                    @if (!empty($fechaEntrega))
+                                        · Entrega {{ \Illuminate\Support\Carbon::parse($fechaEntrega)->format('d/m/Y') }}
                                     @endif
                                 </p>
                             </div>
@@ -93,24 +94,30 @@
         @else
             <section class="orders-results">
                 @forelse ($receipts as $receipt)
+                    @php($pedidoId = data_get($receipt, 'pedido_id') ?? data_get($receipt, 'pedidoId') ?? 'N/A')
+                    @php($tipoComp = data_get($receipt, 'tipo') ?? '')
+                    @php($numeroFmt = data_get($receipt, 'numero_formateado') ?? data_get($receipt, 'numeroFormateado') ?? '')
+                    @php($pdfUrl = data_get($receipt, 'pdf_url') ?? data_get($receipt, 'archivos.pdf'))
+                    @php($xmlUrl = data_get($receipt, 'xml_url') ?? data_get($receipt, 'archivos.xml'))
+                    @php($imgUrl = data_get($receipt, 'img_url') ?? data_get($receipt, 'archivos.img'))
                     <article class="history-card">
                         <div class="history-card-main">
                             <div>
-                                <p class="history-card-kicker">Pedido #{{ $receipt->pedido_id }}</p>
-                                <h3 class="history-card-title">{{ strtoupper($receipt->tipo) }} {{ $receipt->numero_formateado }}</h3>
+                                <p class="history-card-kicker">Pedido #{{ $pedidoId }}</p>
+                                <h3 class="history-card-title">{{ strtoupper((string) $tipoComp) }} {{ $numeroFmt }}</h3>
                                 <p class="history-card-meta">Comprobante emitido</p>
                             </div>
                         </div>
 
                         <div class="history-card-actions">
-                            @if ($receipt->pdf_url)
-                                <a href="{{ $receipt->pdf_url }}" target="_blank" class="btn btn-primary">PDF</a>
+                            @if (!empty($pdfUrl))
+                                <a href="{{ $pdfUrl }}" target="_blank" class="btn btn-primary">PDF</a>
                             @endif
-                            @if ($receipt->xml_url)
-                                <a href="{{ $receipt->xml_url }}" target="_blank" class="btn btn-outline-secondary">XML</a>
+                            @if (!empty($xmlUrl))
+                                <a href="{{ $xmlUrl }}" target="_blank" class="btn btn-outline-secondary">XML</a>
                             @endif
-                            @if ($receipt->img_url)
-                                <a href="{{ $receipt->img_url }}" target="_blank" class="btn btn-outline-secondary">Imagen</a>
+                            @if (!empty($imgUrl))
+                                <a href="{{ $imgUrl }}" target="_blank" class="btn btn-outline-secondary">Imagen</a>
                             @endif
                         </div>
                     </article>
