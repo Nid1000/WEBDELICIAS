@@ -70,7 +70,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT || '21' }}
-          protocol: ftp
+          protocol: ftps
           local-dir: ./frontend/
           server-dir: ./frontend/
           state-name: .ftp-deploy-sync-state-frontend.json
@@ -93,7 +93,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT || '21' }}
-          protocol: ftp
+          protocol: ftps
           local-dir: ./backend/
           server-dir: ./backend/
           state-name: .ftp-deploy-sync-state-backend.json
