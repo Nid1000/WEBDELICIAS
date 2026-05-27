@@ -1,0 +1,117 @@
+name: Deploy cPanel FTP
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cpanel-ftp
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, intl, pdo_mysql, fileinfo, gd, zip, curl, openssl
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend PHP dependencies
+        working-directory: frontend
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Install backend PHP dependencies
+        working-directory: backend
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+
+      - name: Install frontend Node dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend assets
+        working-directory: frontend
+        run: npm run build
+
+      - name: Prepare Laravel runtime folders
+        run: |
+          for app in frontend backend; do
+            mkdir -p "$app/storage/framework/cache/data"
+            mkdir -p "$app/storage/framework/sessions"
+            mkdir -p "$app/storage/framework/views"
+            mkdir -p "$app/storage/logs"
+            mkdir -p "$app/bootstrap/cache"
+            touch "$app/storage/framework/cache/data/.gitkeep"
+            touch "$app/storage/framework/sessions/.gitkeep"
+            touch "$app/storage/framework/views/.gitkeep"
+            touch "$app/storage/logs/.gitkeep"
+            touch "$app/bootstrap/cache/.gitkeep"
+          done
+
+      - name: Deploy frontend to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          protocol: ftp
+          local-dir: ./frontend/
+          server-dir: ./frontend/
+          state-name: .ftp-deploy-sync-state-frontend.json
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/node_modules/**
+            **/.env
+            **/.env.*
+            **/tests/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+
+      - name: Deploy backend to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          protocol: ftp
+          local-dir: ./backend/
+          server-dir: ./backend/
+          state-name: .ftp-deploy-sync-state-backend.json
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/node_modules/**
+            **/.env
+            **/.env.*
+            **/test/**
+            **/tests/**
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/src/**
+            **/prisma/**
+            **/package-lock.json
+            **/tsconfig*.json
+            **/nest-cli.json
+            **/eslint.config.mjs

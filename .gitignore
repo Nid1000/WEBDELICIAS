@@ -50,10 +50,16 @@ tools/php-*.zip
 tools/composer.phar
 tools/composer-installer.sig
 tools/composer-home/
+.composer-cache/
+.composer-home/
 
 # Misc
 .cache/
 .turbo/
+deploy/
+deploy-cpanel/
+webdelicias-cpanel-deploy.tar.gz
+webdelicias-cpanel-deploy.zip
 
 # Uploads
 uploads/
