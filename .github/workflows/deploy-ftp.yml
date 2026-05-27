@@ -1,6 +1,9 @@
 name: Implementar FTP de cPanel
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
