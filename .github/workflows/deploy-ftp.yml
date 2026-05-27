@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Instalar dependencias PHP de frontend
         working-directory: frontend
@@ -66,13 +66,11 @@ jobs:
         working-directory: backend
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - name: Instalar dependencias de Node para el frontend
-        working-directory: frontend
+      - name: Instalar dependencias de Node
         run: npm ci
 
       - name: Construir recursos de frontend
-        working-directory: frontend
-        run: npm run build
+        run: npm --workspace frontend run build
 
       - name: Preparar carpetas runtime de Laravel
         run: |
