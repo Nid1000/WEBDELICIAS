@@ -1,9 +1,6 @@
-name: Deploy cPanel FTP
+name: Implementar FTP de cPanel
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
@@ -12,43 +9,69 @@ concurrency:
 
 jobs:
   deploy:
-    name: Build and deploy
+    name: Construir e implementar
     runs-on: ubuntu-latest
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_PORT: ${{ secrets.FTP_PORT || '21' }}
 
     steps:
-      - name: Checkout
+      - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Validar secrets FTP
+        shell: bash
+        run: |
+          missing=0
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD FTP_PORT; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name no esta configurado en Settings > Secrets and variables > Actions."
+              missing=1
+            fi
+          done
+
+          if [[ "$FTP_SERVER" == FTP_SERVER=* || "$FTP_USERNAME" == FTP_USERNAME=* || "$FTP_PASSWORD" == FTP_PASSWORD=* || "$FTP_PORT" == FTP_PORT=* ]]; then
+            echo "::error::Los secrets deben guardar solo el valor, no lineas tipo FTP_SERVER=valor."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Configurar PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
           extensions: mbstring, intl, pdo_mysql, fileinfo, gd, zip, curl, openssl
           coverage: none
 
-      - name: Setup Node
+      - name: Configurar Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend PHP dependencies
+      - name: Instalar dependencias PHP de frontend
         working-directory: frontend
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - name: Install backend PHP dependencies
+      - name: Instalar dependencias PHP de backend
         working-directory: backend
         run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
-      - name: Install frontend Node dependencies
+      - name: Instalar dependencias de Node para el frontend
         working-directory: frontend
         run: npm ci
 
-      - name: Build frontend assets
+      - name: Construir recursos de frontend
         working-directory: frontend
         run: npm run build
 
-      - name: Prepare Laravel runtime folders
+      - name: Preparar carpetas runtime de Laravel
         run: |
           for app in frontend backend; do
             mkdir -p "$app/storage/framework/cache/data"
@@ -63,13 +86,13 @@ jobs:
             touch "$app/bootstrap/cache/.gitkeep"
           done
 
-      - name: Deploy frontend to FTP
+      - name: Implementar frontend en FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT || '21' }}
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ env.FTP_USERNAME }}
+          password: ${{ env.FTP_PASSWORD }}
+          port: ${{ env.FTP_PORT }}
           protocol: ftps
           local-dir: ./frontend/
           server-dir: ./frontend/
@@ -86,13 +109,13 @@ jobs:
             **/storage/framework/sessions/**
             **/storage/framework/views/**
 
-      - name: Deploy backend to FTP
+      - name: Implementar backend en FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT || '21' }}
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ env.FTP_USERNAME }}
+          password: ${{ env.FTP_PASSWORD }}
+          port: ${{ env.FTP_PORT }}
           protocol: ftps
           local-dir: ./backend/
           server-dir: ./backend/
